@@ -17,7 +17,7 @@ int main() {
         return 1;
     }
 
-    std::cout << "ExchangeCore v1.0 - Simulated Price-Time Priority Matching\n";
+    std::cout << "ExchangeCore v1.3 - Simulated Price-Time Priority Matching\n";
     for (const auto& trade : taker.trades) {
         std::cout << "Trade: maker=" << trade.maker_id
                   << " taker=" << trade.taker_id

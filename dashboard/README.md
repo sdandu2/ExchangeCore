@@ -43,7 +43,7 @@ py -m market_data.stream_server --replay "market_data/records/kraken-YOUR-RECORD
 For the bundled **synthetic** fixture:
 
 ```powershell
-py -m market_data.stream_server --replay market_data/records/synthetic-fixture.jsonl --symbols BTC/USD --linger 60
+py -m market_data.stream_server --replay market_data/fixtures/synthetic-fixture.jsonl --symbols BTC/USD --linger 60
 ```
 
 The UI labels recorded vs. live feed from the server's `mode` field. It never

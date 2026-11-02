@@ -1,141 +1,132 @@
-# ExchangeCore v1.3 — C++ Matching Engine + Live Market Terminal
+# ExchangeCore
 
-ExchangeCore combines a **C++20 simulated limit-order matching engine** with
-**read-only public Kraken spot market data**. The engine simulates price-time
-priority; it **does not** place real trades or recreate Kraken's actual order queue.
+**High-Performance C++ Matching Engine · Verified Market Data · Interactive Engineering Terminal**
 
-Our goal is a credible, testable, real-world engineering portfolio rather than a
-trading profit claim. The core has correctness tests and reproducible benchmarks;
-the Python adapter independently validates, records and streams market data.
+ExchangeCore is a portfolio-grade software engineering project with two deliberately separate systems:
 
-## Quick start: Windows VS Code PowerShell
+- **Simulated exchange core:** a C++20 limit-order book with price-time-priority matching, partial fills, cancellations, correctness tests, and reproducible latency/throughput benchmarks.
+- **Real market-data infrastructure:** a read-only Python service that collects public Kraken spot L2 and trade messages, validates order-book CRC32 checksums, records JSONL captures, and serves a local React/TypeScript dashboard with historical replay.
 
-### 1) Compile and test the C++ engine
+**No real orders or funds are involved.** ExchangeCore does not connect its C++ engine to Kraken execution, reconstruct individual exchange queue positions, or claim to predict profitable trades.
+
+![ExchangeCore Market Overview showing a locally observed Kraken session](docs/assets/market-overview.png)
+
+*Market Overview — example screenshot from a local Kraken feed session on November 2, 2026. Prices are historical, not current quotes.*
+
+## Engineering Results
+
+The **Engine Performance** workspace visualizes measured, archived results from one Windows system (Intel Core Ultra 9 275HX, GCC 16.2.0 Release, seed 31). Each workload contained 1,000,000 in-process operations; throughput is the median of five measured runs.
+
+| Deterministic workload | No reservation | Best measured reservation configuration | Relative gain |
+|---|---:|---:|---:|
+| Passive (resting orders) | 5.56M ops/s | 7.26M ops/s | +30.5% |
+| Crossing (aggressive matching) | 7.06M ops/s | 7.92M ops/s | +12.1% |
+| Mixed (submission and cancellation) | 5.72M ops/s | 7.06M ops/s | +23.5% |
+
+**Benchmark caveats:** These are local in-process results, **not** network round-trip times, exchange execution latency, financial returns, or universal performance guarantees. The best reservation setting differs by workload. The UI shows latency from a *separate instrumented replay*, including chronological p99.9 diagnostics; latency and throughput were not collected in the same run. Replay checksums agree across the tested configurations. Read [the full methodology](docs/engine-performance-v1.3.md) and [archived source CSVs](benchmarks/snapshots/v0.7/).
+
+![Engine Performance workspace showing measured C++ throughput](docs/assets/engine-performance.png)
+
+*Engine Performance — frozen benchmark snapshot from the v0.7 experiment, not live Kraken latency.*
+
+## What You Can Explore
+
+| View | What it demonstrates |
+|---|---|
+| Market Overview | BTC/USD and ETH/USD live or recorded bid/ask levels, spread, midpoint history, recent exchange trades and feed health |
+| Historical Replay | Pause, resume, change speed, and seek through a **locally saved, validated** Kraken recording |
+| Engine Performance | Compare deterministic workloads, order-ID reservation strategies, throughput, replay tail latency, rehash counts and methodology |
+
+The **Market Overview** needs the local Python WebSocket server. The **Engine Performance** workspace works offline from archived measurements and does not require Kraken connectivity.
+
+## Quick Start (Windows / VS Code PowerShell)
+
+Prerequisites: Python 3, Node.js 22 (or Vite-compatible Node version), npm, and an up-to-date C++20 compiler/CMake for the C++ engine. The Python and frontend views can be explored before building C++.
+
+**1 — Install local dependencies and start the frontend (Terminal A):**
 
 ```powershell
-$env:Path = 'C:\msys64\ucrt64\bin;' + $env:Path
-cmake -S . -B build-gcc-release -G 'MinGW Makefiles' -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER='C:/msys64/ucrt64/bin/g++.exe' -DCMAKE_MAKE_PROGRAM='C:/msys64/ucrt64/bin/mingw32-make.exe'
-cmake --build build-gcc-release
-ctest --test-dir build-gcc-release --output-on-failure
-```
-
-### 2) Install and verify the data adapter
-
-```powershell
+cd "$HOME\Projects\ExchangeCore"
 py -m pip install -r market_data/requirements.txt
-py -m unittest discover -s market_data/tests -v
-```
-
-### 3) Start a real-time stream (Terminal 1)
-
-```powershell
-py -m market_data.stream_server --symbols BTC/USD ETH/USD --duration 300
-```
-
-**Public market data, no login or API key.** Your console will show:
-
-`LOCAL READ-ONLY STREAM: ws://127.0.0.1:8765`
-
-A timestamped JSONL recording is saved locally to `market_data/records/`.
-If the exchange is unreachable, use offline replay instead (see below).
-
-### 4) Connect a local viewer (Terminal 2)
-
-```powershell
-py -m market_data.watch --max-messages 30 --book-every 10
-```
-
-The viewer reports connection health and validated bid/ask levels from the
-same live feed. It cannot place real orders.
-
-### 5) Replay your own captured market recording
-
-```powershell
-py -m market_data.stream_server --replay "market_data/records/YOUR-EXACT-FILENAME.jsonl" --speed 1
-```
-
-Connect the watcher from a separate terminal as above. Recorded captures are
-ignored by Git and **not included in this ZIP**. For a built-in offline fixture,
-run:
-
-```powershell
-py -m market_data.stream_server --replay market_data/records/synthetic-fixture.jsonl --symbols BTC/USD --linger 30
-```
-
-The fixture is synthetic and is clearly labeled; your own `kraken-*.jsonl`
-recordings are real-feed captures from your machine.
-
-## v1.3 Engineering Performance Dashboard
-
-The new **Engine Performance** page at `http://127.0.0.1:5173/#performance` lets visitors explore the **actual archived v0.7 benchmarking results** from this project, including throughput across reservation strategies, chronological p99.9 latency diagnostics, rehash counts and the limits of these metrics. Unlike market prices, the performance page works offline without a stream server. The underlying CSV files are preserved in `benchmarks/snapshots/v0.7/` and the dashboard snapshot can be rebuilt with `py scripts/export_benchmark_snapshot.py`.
-
-See [v1.3 performance and methodology guide](docs/engine-performance-v1.3.md). This is still an **in-process simulated matching-engine benchmark**, not actual exchange execution latency.
-
-## v1.2 historical replay and UX fixes
-
-The market-data server now supports replay-only pause/resume, speed, and seek-to-event-position controls. Recorded books are reconstructed from checksum-validated events and the frontend displays source timestamps on a time-proportional chart. The live mode remains read-only. Order-book VALUE (USD), locally paused trade tape, and graceful disconnect handling are included.
-
-See [historical replay guide](docs/replay-v1.2.md).
-
-## Read-Only Real-Time Dashboard (v1.1–v1.3)
-
-The `dashboard/` folder contains a read-only React + TypeScript interface for
-verified Kraken Level 2 data, mid-price observations, depth, trade tape and feed
-health. Start `market_data.stream_server` first (as above), then in a **second**
-PowerShell terminal:
-
-```powershell
 cd dashboard
-node --version
 npm install
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173**. Node.js 22 LTS is recommended; Vite requires
-Node 20.19+ or 22.12+. See [dashboard instructions](dashboard/README.md).
+Open **http://127.0.0.1:5173** for the dashboard, or **http://127.0.0.1:5173/#performance** to view C++ results without a feed.
 
-The viewer is strictly localhost-only. It does not send orders and must not be
-exposed publicly without appropriate provider permissions and security controls.
+**2 — Start a Kraken live feed (Terminal B, from project root):**
 
-## Development milestones
-
-- **v0.1–0.3:** deterministic C++ matching and cancellation.
-- **v0.4–0.7:** throughput, tail-latency and memory profiling.
-- **v0.8:** configurable cancellation implementation and regression tests.
-- **v0.9:** public Kraken WebSocket collector, decimal-safe book, CRC32, JSONL replay.
-- **v1.0:** **local streaming API**, health/staleness, session resets, bounded fanout,
-  read-only clients, validated live feed, and timed replay.
-- **v1.3:** Engineering Performance workspace with archived v0.7 measurements and UI polish.
-- **v1.2:** interactive replay and timestamp-aware chart; **v1.1:** React + TypeScript local live-market terminal with verified L2 book,
-  trade tape, observed mid-price and feed health.
-
-## Architecture and trust boundaries
-
-```text
-Kraken public WebSocket (spot L2 + trades)     Saved Kraken JSONL capture
-              |                                        |
-         CRC32 validation                 Decimal-safe CRC32 replay
-              |                                        |
-           recording                              validation
-              |_________________   ___________________|
-                                | |
-                       local WebSocket hub
-                     ws://127.0.0.1:8765
-                       (read-only, local)
-                                |
-                    CLI watcher / Local React dashboard
-
-C++20 Matching Engine (separate: simulated orders and benchmark workloads)
+```powershell
+cd "$HOME\Projects\ExchangeCore"
+py -m market_data.stream_server --symbols BTC/USD ETH/USD --duration 1800 --linger 60
 ```
 
-The hub and recorder run outside the matching-engine benchmark path. **Matching
-latency benchmarks are not Kraken feed latency or end-to-end network latency.**
+The WebSocket service is bound to `ws://127.0.0.1:8765` on **localhost only**. Live capture produces an **ignored, local** recording under `market_data/records/`.
 
-Full details: [v1.0 streaming API](docs/live-stream-v1.0.md) ·
-[v0.9 market-data validation](docs/live-feed-v0.9.md) ·
-[matching design](docs/design.md) ·
-[benchmarking](docs/benchmarking.md).
+**Alternative — Offline replay without exchange access:** Stop any live server on port 8765, then start:
 
-**Privacy and market-data licensing:** do not commit your captured JSONL files.
-The stream is intentionally bound only to localhost. Verify Kraken's API terms
-and obtain necessary permission before publicly redistributing real exchange data.
+```powershell
+cd "$HOME\Projects\ExchangeCore"
+py -m market_data.stream_server --replay market_data/fixtures/synthetic-fixture.jsonl --symbols BTC/USD --depth 10 --speed 1
+```
+
+This tiny **synthetic** snapshot is committed for smoke-testing the replay pipeline; it is not a realistic historical session. For a full, interactive replay with trades and meaningful seeking, replace the fixture path with one of your own `market_data/records/kraken-*.jsonl` captures.
+
+## C++ Build and Reproducible Verification
+
+Example for **MSYS2 UCRT64 GCC** in Windows PowerShell, from the project root:
+
+```powershell
+$env:Path = 'C:\msys64\ucrt64\bin;' + $env:Path
+cmake -S . -B build-release-check -G 'MinGW Makefiles' -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER='C:/msys64/ucrt64/bin/g++.exe' -DCMAKE_MAKE_PROGRAM='C:/msys64/ucrt64/bin/mingw32-make.exe'
+cmake --build build-release-check
+ctest --test-dir build-release-check --output-on-failure
+py -m unittest discover -s market_data/tests -v
+cd dashboard
+npm run build
+npm run test:unit
+```
+
+Or, with dependencies already installed, run the included comprehensive check from the project root:
+
+```powershell
+.\scripts\verify_release.ps1
+```
+
+See [Final Release QA](docs/release-qa.md) for manual disconnection, replay, UI and GitHub Actions checks.
+
+## System Architecture
+
+```text
+Public Kraken WebSocket v2 (L2 + trade events)    Local JSONL recordings
+                      |                                   |
+         Python decimal-safe book + CRC32        Checked replay parser
+                      |                                   |
+                Session reset / health / verified updates
+                                  |
+                        Local WebSocket hub
+                        ws://127.0.0.1:8765
+                                  |
+                         React / TypeScript UI
+                          (live / replay views)
+
+    Separately: C++20 matching engine -> deterministic benchmarks ->
+       archived CSVs -> generated JSON -> Engine Performance view
+```
+
+The two pipelines are intentionally separated so live WebSocket/network activity cannot distort the in-process C++ benchmarks. Learn more in [Design](docs/design.md), [Market Feed](docs/live-feed-v0.9.md), [Live Stream](docs/live-stream-v1.0.md), and [Historical Replay](docs/replay-v1.2.md).
+
+## Project Scope, Limitations and Attribution
+
+- **Depth:** Public Kraken L2 is aggregated by price level. It does not reveal individual queue priority or all liquidity across venues.
+- **Replay:** Replays use source and local receipt timestamps and reconstruct checksum-verified books; gaps in collection are not magically filled. Recorded files over the in-memory replay limit cannot be opened with the current player.
+- **Benchmark:** 1M-operation deterministic workloads do not capture networking, risk limits, real capital, multi-venue routing or production SLAs.
+- **Presentation:** Live exchange data may be subject to provider display/redistribution restrictions. The server is local-only and this repository does **not** publicly redistribute user-captured Kraken data.
+- **Security:** The current local server is read-only. Do not expose port 8765 to the public internet.
+
+More: [Demo Walkthrough](docs/demo-walkthrough.md) · [Release QA](docs/release-qa.md) · [Benchmarking](docs/benchmarking.md).
+
+## Status
+
+**Portfolio release candidate — v1.3.0.** Feature development is frozen for this initial portfolio milestone. The remaining publication gates are a local clean build, passing GitHub Actions, and merging the reviewed branch before tagging `v1.3.0`. See [Release QA](docs/release-qa.md).

@@ -40,7 +40,7 @@ The sample generator uses synthetic data and requires no network:
 
 ```powershell
 py -m market_data.sample
-py -m market_data.replay market_data/records/synthetic-fixture.jsonl --symbols BTC/USD
+py -m market_data.replay market_data/fixtures/synthetic-fixture.jsonl --symbols BTC/USD
 ```
 
 Other collector flags: `--no-trades`, `--print-every 25`, `--max-events 500`,
