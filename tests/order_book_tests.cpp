@@ -344,6 +344,149 @@ void trade_totals_match_executed_quantity() {
     require(book.best_ask()->total_quantity == 2, "remaining book quantity correct");
 }
 
+void reserved_ids_preserve_matching_and_cancellation() {
+    OrderBook book;
+    book.reserve_order_ids(10'000);
+    require(book.order_count() == 0, "reserve does not insert orders");
+    require(book.submit({1, Side::Sell, 101, 8}).status == SubmitStatus::Accepted,
+            "rest order with reserved index");
+    const auto result = book.submit({2, Side::Buy, 101, 3});
+    require(result.trades.size() == 1 && result.trades[0].quantity == 3,
+            "reserved index still matches");
+    require(book.best_ask()->total_quantity == 5, "reserved index partial maker");
+    require(book.cancel(1), "reserved index cancellation works");
+    require(book.submit({1, Side::Buy, 100, 4}).status == SubmitStatus::Accepted,
+            "reserved index allows reused id");
+    require(book.order_count() == 1, "reserved index final count");
+}
+
+void overflow_on_sell_level_is_atomic() {
+    OrderBook book;
+    const auto max = std::numeric_limits<Quantity>::max();
+    require(book.submit({1, Side::Sell, 110, max - 3}).status == SubmitStatus::Accepted,
+            "insert near-maximum ask");
+    require(book.submit({2, Side::Sell, 110, 3}).status == SubmitStatus::Accepted,
+            "fill capacity without overflow");
+    const auto result = book.submit({3, Side::Sell, 110, 1});
+    require(result.status == SubmitStatus::QuantityOverflow && result.trades.empty(),
+            "overflow must reject sell");
+    require(book.best_ask()->total_quantity == max && book.order_count() == 2,
+            "sell overflow leaves state unchanged");
+}
+
+void reservation_does_not_cap_order_capacity() {
+    OrderBook book;
+    book.reserve_order_ids(1);
+    for (OrderId id = 1; id <= 100; ++id) {
+        require(book.submit({id, Side::Buy, 100, 1}).status == SubmitStatus::Accepted,
+                "reserve is not a hard order limit");
+    }
+    require(book.order_count() == 100, "more orders than reserved capacity accepted");
+    require(book.best_bid()->total_quantity == 100, "order quantity consistent");
+}
+
+void diagnostic_book_stats_consistent() {
+    OrderBook book;
+    const auto empty = book.stats();
+    require(empty.live_orders == 0 && empty.bid_levels == 0 && empty.ask_levels == 0,
+            "empty diagnostic snapshot");
+    book.reserve_order_ids(80);
+    require(book.stats().id_buckets > 0, "reserve creates available buckets");
+    require(book.submit({1, Side::Buy, 100, 2}).status == SubmitStatus::Accepted,
+            "first bid");
+    require(book.submit({2, Side::Buy, 100, 3}).status == SubmitStatus::Accepted,
+            "second bid at same level");
+    require(book.submit({3, Side::Sell, 102, 2}).status == SubmitStatus::Accepted,
+            "ask level");
+    const auto populated = book.stats();
+    require(populated.live_orders == 3 && populated.bid_levels == 1 &&
+            populated.ask_levels == 1, "populated diagnostic snapshot");
+    require(populated.id_load_factor >= 0.0f, "nonnegative hash load");
+    require(book.cancel(1), "cancel first bid");
+    require(book.stats().bid_levels == 1 && book.stats().live_orders == 2,
+            "first cancellation retains shared price level");
+    require(book.cancel(2), "cancel final bid");
+    require(book.stats().bid_levels == 0 && book.stats().live_orders == 1,
+            "final cancellation removes price level");
+    require(book.submit({4, Side::Buy, 103, 2}).trades.size() == 1,
+            "trade consumes remaining ask");
+    require(book.stats().ask_levels == 0 && book.order_count() == 0,
+            "maker removal updates diagnostic snapshot");
+}
+
+void diagnostic_bucket_growth_matches_reservation() {
+    OrderBook book;
+    book.reserve_order_ids(100);
+    const auto starting_buckets = book.stats().id_buckets;
+    for (OrderId id = 1; id <= 75; ++id)
+        require(book.submit({id, Side::Buy, 100, 1}).status == SubmitStatus::Accepted,
+                "submit order under reserved capacity");
+    require(book.stats().id_buckets == starting_buckets,
+            "reserved hash capacity avoids growth under hint");
+    require(book.stats().live_orders == 75, "diagnostic count after growth");
+}
+
+// Cancel-path regression: pointers to levels must remain valid as other
+// std::map nodes are inserted/erased and unordered_map rehashes occur.
+void cancel_after_level_and_index_growth() {
+    OrderBook book;
+    for (OrderId id = 1; id <= 250; ++id) {
+        const PriceTicks price = 1000 + static_cast<PriceTicks>(id % 73);
+        require(book.submit({id, Side::Buy, price, 2}).status == SubmitStatus::Accepted,
+                "insert many bid levels");
+    }
+    require(book.order_count() == 250, "all resting IDs accounted");
+    for (OrderId id = 1; id <= 250; id += 2)
+        require(book.cancel(id), "cancel after many map inserts and hash rehashes");
+    for (OrderId id = 2; id <= 250; id += 2)
+        require(book.cancel(id), "remove remaining ID and possibly last price level");
+    require(book.order_count() == 0 && !book.best_bid(), "all bid levels cleared");
+}
+
+void cancel_reused_id_at_different_level_and_side() {
+    OrderBook book;
+    require(book.submit({42, Side::Buy, 100, 3}).status == SubmitStatus::Accepted,
+            "insert original bid");
+    require(book.cancel(42), "cancel original bid");
+    require(book.submit({42, Side::Sell, 200, 4}).status == SubmitStatus::Accepted,
+            "reuse ID on ask side");
+    require(book.submit({43, Side::Sell, 200, 6}).status == SubmitStatus::Accepted,
+            "same-level ask");
+    require(book.cancel(42), "cancel reused ID without removing shared ask level");
+    require(book.best_ask() && book.best_ask()->total_quantity == 6,
+            "remaining ask unchanged");
+    require(book.cancel(43), "final ask removed");
+    require(!book.best_ask() && book.order_count() == 0, "empty book");
+}
+
+void cancel_other_order_after_partial_and_full_fills() {
+    OrderBook book;
+    (void)book.submit({1, Side::Sell, 101, 8});
+    (void)book.submit({2, Side::Sell, 101, 10});
+    (void)book.submit({3, Side::Sell, 102, 3});
+    const auto result = book.submit({4, Side::Buy, 101, 12});
+    require(result.executed_quantity == 12, "partial crossing execution");
+    require(book.cancel(3), "cancel order on independent price level");
+    require(book.cancel(2), "cancel partially filled maker");
+    require(book.order_count() == 0 && !book.best_ask(), "no dangling locations");
+}
+
+void cancel_mixed_sides_and_empty_levels() {
+    OrderBook book;
+    for (OrderId id = 1; id <= 100; ++id) {
+        const Side side = id % 2 == 0 ? Side::Buy : Side::Sell;
+        const PriceTicks price = side == Side::Buy ? 900 + static_cast<PriceTicks>(id % 10)
+                                                    : 1100 + static_cast<PriceTicks>(id % 10);
+        require(book.submit({id, side, price, 1}).status == SubmitStatus::Accepted,
+                "rest mixed side order");
+    }
+    for (OrderId id = 100; id > 0; --id)
+        require(book.cancel(id), "cancel reverse arrival order");
+    require(book.stats().bid_levels == 0 && book.stats().ask_levels == 0,
+            "all price levels cleared");
+    require(book.order_count() == 0, "all id locations cleared");
+}
+
 struct TestCase { const char* name; void (*run)(); };
 } // namespace
 
@@ -380,6 +523,15 @@ int main() {
         {"cancelled order cannot fill", cancelled_order_cannot_be_filled},
         {"max quantity fill", very_large_quantities_do_not_overflow_matching},
         {"conservation of quantity", trade_totals_match_executed_quantity},
+        {"reserve does not change matching", reserved_ids_preserve_matching_and_cancellation},
+        {"sell overflow rejects atomically", overflow_on_sell_level_is_atomic},
+        {"reserve is a hint", reservation_does_not_cap_order_capacity},
+        {"diagnostic snapshots", diagnostic_book_stats_consistent},
+        {"diagnostic reserved buckets", diagnostic_bucket_growth_matches_reservation},
+        {"cancel after growth and rehash", cancel_after_level_and_index_growth},
+        {"cancel reused id at opposite side", cancel_reused_id_at_different_level_and_side},
+        {"cancel after maker fills", cancel_other_order_after_partial_and_full_fills},
+        {"cancel mixed sides reverse order", cancel_mixed_sides_and_empty_levels},
     };
 
     std::size_t failures = 0;

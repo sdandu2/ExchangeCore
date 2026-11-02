@@ -15,6 +15,10 @@ bool is_crossing(const Order& incoming, PriceTicks resting_price) {
 
 } // namespace
 
+void OrderBook::reserve_order_ids(std::size_t expected_live_orders) {
+    locations_.reserve(expected_live_orders);
+}
+
 Quantity OrderBook::predicted_resting_quantity(const Order& order) const {
     Quantity remaining = order.quantity;
     if (order.side == Side::Buy) {
@@ -43,8 +47,14 @@ Submission OrderBook::submit(const Order& order) {
     if (order.quantity == 0) return rejected(SubmitStatus::InvalidQuantity);
     if (locations_.contains(order.id)) return rejected(SubmitStatus::DuplicateId);
 
-    // Preflight aggregate-quantity overflow *before* any matching occurs,
-    // ensuring invalid submissions never execute a partial transaction.
+    // Preflight aggregate-quantity overflow before executing any trade.
+    // A pre-existing same-side level can overflow if the incoming order rests.
+    // Usually its total fits with the entire incoming quantity; since any
+    // resting remainder is <= order.quantity, no opposite-book scan is needed.
+    // Only when an overflow is *possible* do we run the exact legacy scan.
+    // A build-time switch preserves the original validation algorithm for
+    // reproducible A/B benchmarking of this optimization.
+#ifdef EXCHANGECORE_LEGACY_PREFLIGHT
     const Quantity predicted_remaining = predicted_resting_quantity(order);
     if (predicted_remaining != 0) {
         if (order.side == Side::Buy) {
@@ -61,6 +71,26 @@ Submission OrderBook::submit(const Order& order) {
                 return rejected(SubmitStatus::QuantityOverflow);
         }
     }
+#else
+    const Quantity max_quantity = std::numeric_limits<Quantity>::max();
+    if (order.side == Side::Buy) {
+        const auto existing = bids_.find(order.price_ticks);
+        if (existing != bids_.end() &&
+            existing->second.total_quantity > max_quantity - order.quantity) {
+            const Quantity predicted_remaining = predicted_resting_quantity(order);
+            if (existing->second.total_quantity > max_quantity - predicted_remaining)
+                return rejected(SubmitStatus::QuantityOverflow);
+        }
+    } else {
+        const auto existing = asks_.find(order.price_ticks);
+        if (existing != asks_.end() &&
+            existing->second.total_quantity > max_quantity - order.quantity) {
+            const Quantity predicted_remaining = predicted_resting_quantity(order);
+            if (existing->second.total_quantity > max_quantity - predicted_remaining)
+                return rejected(SubmitStatus::QuantityOverflow);
+        }
+    }
+#endif
 
     Quantity remaining = order.quantity;
     std::vector<Trade> trades;
@@ -85,7 +115,7 @@ void OrderBook::rest(const Order& order) {
         level.orders.push_back(order);
         auto order_it = std::prev(level.orders.end());
         level.total_quantity += order.quantity;
-        locations_.emplace(order.id, Location{order.side, order.price_ticks, order_it});
+        locations_.emplace(order.id, Location{order.side, order.price_ticks, order_it, &level});
     } else {
         auto [level_it, inserted] = asks_.try_emplace(order.price_ticks);
         (void)inserted;
@@ -93,7 +123,7 @@ void OrderBook::rest(const Order& order) {
         level.orders.push_back(order);
         auto order_it = std::prev(level.orders.end());
         level.total_quantity += order.quantity;
-        locations_.emplace(order.id, Location{order.side, order.price_ticks, order_it});
+        locations_.emplace(order.id, Location{order.side, order.price_ticks, order_it, &level});
     }
 }
 
@@ -146,6 +176,8 @@ bool OrderBook::cancel(OrderId id) {
     if (location_it == locations_.end()) return false;
 
     const Location location = location_it->second;
+#ifdef EXCHANGECORE_LEGACY_CANCEL
+    // v0.7 baseline: look up a price level in the tree on every cancellation.
     if (location.side == Side::Buy) {
         auto level_it = bids_.find(location.price_ticks);
         auto& level = level_it->second;
@@ -159,6 +191,21 @@ bool OrderBook::cancel(OrderId id) {
         level.orders.erase(location.order_it);
         if (level.orders.empty()) asks_.erase(level_it);
     }
+#else
+    // v0.8: price levels live in std::map nodes, whose addresses remain stable
+    // until the node is removed. All locations on a removed level have already
+    // been erased by fills or this final cancellation, so pointers never outlive
+    // their price-level nodes during the book's lifetime.
+    PriceLevel& level = *location.level_ptr;
+    level.total_quantity -= location.order_it->quantity;
+    level.orders.erase(location.order_it);
+    if (level.orders.empty()) {
+        // Last order at the level: remove the map node once. All other
+        // cancellations avoid the tree lookup entirely.
+        if (location.side == Side::Buy) bids_.erase(location.price_ticks);
+        else asks_.erase(location.price_ticks);
+    }
+#endif
 
     locations_.erase(location_it);
     return true;
@@ -196,6 +243,11 @@ std::vector<Order> OrderBook::orders_at(Side side, PriceTicks price_ticks) const
 
 std::size_t OrderBook::order_count() const noexcept {
     return locations_.size();
+}
+
+BookStats OrderBook::stats() const noexcept {
+    return {locations_.size(), bids_.size(), asks_.size(),
+            locations_.bucket_count(), locations_.load_factor()};
 }
 
 } // namespace exchangecore

@@ -44,16 +44,31 @@ struct LevelSummary {
     std::size_t order_count;
 };
 
+// Constant-time diagnostic snapshot; use outside timed operations in benchmarks.
+// Bucket count is an observable proxy for rehashes, NOT total allocation tracking.
+struct BookStats {
+    std::size_t live_orders;
+    std::size_t bid_levels;
+    std::size_t ask_levels;
+    std::size_t id_buckets;
+    float id_load_factor;
+};
+
 // Single-threaded limit order book with price-time (FIFO) priority.
 // New limit orders match immediately when marketable; unfilled quantity rests.
 class OrderBook {
 public:
+    // Optional performance hint. Does not limit order count or change matching behavior.
+    // Reserving order IDs can reduce hash-table rehashes during book growth.
+    void reserve_order_ids(std::size_t expected_live_orders);
+
     [[nodiscard]] Submission submit(const Order& order);
     [[nodiscard]] bool cancel(OrderId id);
     [[nodiscard]] std::optional<LevelSummary> best_bid() const;
     [[nodiscard]] std::optional<LevelSummary> best_ask() const;
     [[nodiscard]] std::vector<Order> orders_at(Side side, PriceTicks price_ticks) const;
     [[nodiscard]] std::size_t order_count() const noexcept;
+    [[nodiscard]] BookStats stats() const noexcept;
 
 private:
     struct PriceLevel {
@@ -65,6 +80,7 @@ private:
         Side side;
         PriceTicks price_ticks;
         std::list<Order>::iterator order_it;
+        PriceLevel* level_ptr; // map node address stable while level has live orders.
     };
 
     std::map<PriceTicks, PriceLevel, std::greater<PriceTicks>> bids_;

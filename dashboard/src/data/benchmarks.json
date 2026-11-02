@@ -1,0 +1,1065 @@
+{
+  "meta": {
+    "compiler": "GCC 16.2.0",
+    "build": "Release",
+    "seed": 31,
+    "rounds": 5,
+    "source": "User-supplied ExchangeCore v0.7 CSV benchmark snapshots",
+    "date": "2026-11-02",
+    "machine": "Intel Core Ultra 9 275HX (Windows)",
+    "notes": "In-process order-book operations; throughput and per-operation latency sampled in separate runs."
+  },
+  "workloads": [
+    {
+      "key": "passive",
+      "label": "Passive Orders",
+      "desc": "Resting limit orders without execution",
+      "peakLive": 1000000,
+      "operations": 1000000,
+      "configs": [
+        {
+          "key": "none",
+          "label": "No Reserve",
+          "reserve": 0,
+          "median": 5560804,
+          "min": 4966866,
+          "max": 6508425,
+          "rounds": [
+            4966866,
+            6508425,
+            5560804,
+            6265425,
+            5392705
+          ],
+          "checksum": "7116360851974574261",
+          "deciles": [
+            {
+              "decile": 1,
+              "meanNs": 165.53,
+              "p99Ns": 100,
+              "p999Ns": 23800,
+              "maxNs": 1052200,
+              "rehashes": 14,
+              "over10us": 126,
+              "startLive": 0,
+              "endLive": 100000
+            },
+            {
+              "decile": 2,
+              "meanNs": 178.81,
+              "p99Ns": 200,
+              "p999Ns": 23600,
+              "maxNs": 2525100,
+              "rehashes": 1,
+              "over10us": 116,
+              "startLive": 100000,
+              "endLive": 200000
+            },
+            {
+              "decile": 3,
+              "meanNs": 157.64,
+              "p99Ns": 200,
+              "p999Ns": 24700,
+              "maxNs": 286600,
+              "rehashes": 0,
+              "over10us": 127,
+              "startLive": 200000,
+              "endLive": 300000
+            },
+            {
+              "decile": 4,
+              "meanNs": 244.5,
+              "p99Ns": 200,
+              "p999Ns": 24500,
+              "maxNs": 8117600,
+              "rehashes": 1,
+              "over10us": 127,
+              "startLive": 300000,
+              "endLive": 400000
+            },
+            {
+              "decile": 5,
+              "meanNs": 142.89,
+              "p99Ns": 200,
+              "p999Ns": 23900,
+              "maxNs": 275000,
+              "rehashes": 0,
+              "over10us": 124,
+              "startLive": 400000,
+              "endLive": 500000
+            },
+            {
+              "decile": 6,
+              "meanNs": 145.73,
+              "p99Ns": 200,
+              "p999Ns": 24100,
+              "maxNs": 287100,
+              "rehashes": 0,
+              "over10us": 122,
+              "startLive": 500000,
+              "endLive": 600000
+            },
+            {
+              "decile": 7,
+              "meanNs": 148.44,
+              "p99Ns": 100,
+              "p999Ns": 23000,
+              "maxNs": 271900,
+              "rehashes": 0,
+              "over10us": 122,
+              "startLive": 600000,
+              "endLive": 700000
+            },
+            {
+              "decile": 8,
+              "meanNs": 345.76,
+              "p99Ns": 200,
+              "p999Ns": 23900,
+              "maxNs": 19399300,
+              "rehashes": 1,
+              "over10us": 127,
+              "startLive": 700000,
+              "endLive": 800000
+            },
+            {
+              "decile": 9,
+              "meanNs": 143.48,
+              "p99Ns": 200,
+              "p999Ns": 23900,
+              "maxNs": 248600,
+              "rehashes": 0,
+              "over10us": 120,
+              "startLive": 800000,
+              "endLive": 900000
+            },
+            {
+              "decile": 10,
+              "meanNs": 150.82,
+              "p99Ns": 100,
+              "p999Ns": 23600,
+              "maxNs": 273800,
+              "rehashes": 0,
+              "over10us": 125,
+              "startLive": 900000,
+              "endLive": 1000000
+            }
+          ]
+        },
+        {
+          "key": "full",
+          "label": "Peak-Live / Full",
+          "reserve": 1000000,
+          "median": 7258996,
+          "min": 6296531,
+          "max": 8250560,
+          "rounds": [
+            6296531,
+            7506431,
+            7258996,
+            6915811,
+            8250560
+          ],
+          "checksum": "7116360851974574261",
+          "deciles": [
+            {
+              "decile": 1,
+              "meanNs": 176.81,
+              "p99Ns": 200,
+              "p999Ns": 28100,
+              "maxNs": 260500,
+              "rehashes": 0,
+              "over10us": 129,
+              "startLive": 0,
+              "endLive": 100000
+            },
+            {
+              "decile": 2,
+              "meanNs": 200.32,
+              "p99Ns": 200,
+              "p999Ns": 29900,
+              "maxNs": 375900,
+              "rehashes": 0,
+              "over10us": 132,
+              "startLive": 100000,
+              "endLive": 200000
+            },
+            {
+              "decile": 3,
+              "meanNs": 175.7,
+              "p99Ns": 200,
+              "p999Ns": 27900,
+              "maxNs": 276900,
+              "rehashes": 0,
+              "over10us": 122,
+              "startLive": 200000,
+              "endLive": 300000
+            },
+            {
+              "decile": 4,
+              "meanNs": 188.14,
+              "p99Ns": 200,
+              "p999Ns": 28200,
+              "maxNs": 371900,
+              "rehashes": 0,
+              "over10us": 128,
+              "startLive": 300000,
+              "endLive": 400000
+            },
+            {
+              "decile": 5,
+              "meanNs": 164.45,
+              "p99Ns": 200,
+              "p999Ns": 24300,
+              "maxNs": 344100,
+              "rehashes": 0,
+              "over10us": 122,
+              "startLive": 400000,
+              "endLive": 500000
+            },
+            {
+              "decile": 6,
+              "meanNs": 163.5,
+              "p99Ns": 200,
+              "p999Ns": 25100,
+              "maxNs": 275700,
+              "rehashes": 0,
+              "over10us": 125,
+              "startLive": 500000,
+              "endLive": 600000
+            },
+            {
+              "decile": 7,
+              "meanNs": 167.59,
+              "p99Ns": 200,
+              "p999Ns": 25300,
+              "maxNs": 319300,
+              "rehashes": 0,
+              "over10us": 123,
+              "startLive": 600000,
+              "endLive": 700000
+            },
+            {
+              "decile": 8,
+              "meanNs": 156.69,
+              "p99Ns": 200,
+              "p999Ns": 24600,
+              "maxNs": 272100,
+              "rehashes": 0,
+              "over10us": 125,
+              "startLive": 700000,
+              "endLive": 800000
+            },
+            {
+              "decile": 9,
+              "meanNs": 144.46,
+              "p99Ns": 100,
+              "p999Ns": 23000,
+              "maxNs": 276600,
+              "rehashes": 0,
+              "over10us": 121,
+              "startLive": 800000,
+              "endLive": 900000
+            },
+            {
+              "decile": 10,
+              "meanNs": 164.0,
+              "p99Ns": 200,
+              "p999Ns": 23900,
+              "maxNs": 369000,
+              "rehashes": 0,
+              "over10us": 124,
+              "startLive": 900000,
+              "endLive": 1000000
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "crossing",
+      "label": "Crossing Orders",
+      "desc": "Aggressive order flow across price levels",
+      "peakLive": 1479,
+      "operations": 1000000,
+      "configs": [
+        {
+          "key": "none",
+          "label": "No Reserve",
+          "reserve": 0,
+          "median": 7062720,
+          "min": 6761069,
+          "max": 7402878,
+          "rounds": [
+            6761069,
+            6827854,
+            7128290,
+            7062720,
+            7402878
+          ],
+          "checksum": "11379043276809673099",
+          "deciles": [
+            {
+              "decile": 1,
+              "meanNs": 168.86,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 402500,
+              "rehashes": 6,
+              "over10us": 10,
+              "startLive": 0,
+              "endLive": 268
+            },
+            {
+              "decile": 2,
+              "meanNs": 163.03,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 265700,
+              "rehashes": 0,
+              "over10us": 12,
+              "startLive": 268,
+              "endLive": 147
+            },
+            {
+              "decile": 3,
+              "meanNs": 131.8,
+              "p99Ns": 300,
+              "p999Ns": 400,
+              "maxNs": 249100,
+              "rehashes": 0,
+              "over10us": 9,
+              "startLive": 147,
+              "endLive": 156
+            },
+            {
+              "decile": 4,
+              "meanNs": 146.55,
+              "p99Ns": 300,
+              "p999Ns": 400,
+              "maxNs": 256900,
+              "rehashes": 1,
+              "over10us": 10,
+              "startLive": 156,
+              "endLive": 659
+            },
+            {
+              "decile": 5,
+              "meanNs": 151.49,
+              "p99Ns": 300,
+              "p999Ns": 400,
+              "maxNs": 261500,
+              "rehashes": 0,
+              "over10us": 8,
+              "startLive": 659,
+              "endLive": 654
+            },
+            {
+              "decile": 6,
+              "meanNs": 225.54,
+              "p99Ns": 600,
+              "p999Ns": 1900,
+              "maxNs": 270800,
+              "rehashes": 0,
+              "over10us": 29,
+              "startLive": 654,
+              "endLive": 213
+            },
+            {
+              "decile": 7,
+              "meanNs": 168.38,
+              "p99Ns": 400,
+              "p999Ns": 600,
+              "maxNs": 25700,
+              "rehashes": 0,
+              "over10us": 4,
+              "startLive": 213,
+              "endLive": 209
+            },
+            {
+              "decile": 8,
+              "meanNs": 177.91,
+              "p99Ns": 400,
+              "p999Ns": 600,
+              "maxNs": 97400,
+              "rehashes": 0,
+              "over10us": 8,
+              "startLive": 209,
+              "endLive": 931
+            },
+            {
+              "decile": 9,
+              "meanNs": 179.1,
+              "p99Ns": 400,
+              "p999Ns": 600,
+              "maxNs": 98100,
+              "rehashes": 1,
+              "over10us": 3,
+              "startLive": 931,
+              "endLive": 1138
+            },
+            {
+              "decile": 10,
+              "meanNs": 175.83,
+              "p99Ns": 400,
+              "p999Ns": 600,
+              "maxNs": 139000,
+              "rehashes": 0,
+              "over10us": 3,
+              "startLive": 1138,
+              "endLive": 1226
+            }
+          ]
+        },
+        {
+          "key": "peak",
+          "label": "Peak-Live Reserve",
+          "reserve": 1479,
+          "median": 7447630,
+          "min": 6914773,
+          "max": 7818706,
+          "rounds": [
+            7818706,
+            6914773,
+            7423674,
+            7447630,
+            7535346
+          ],
+          "checksum": "11379043276809673099",
+          "deciles": [
+            {
+              "decile": 1,
+              "meanNs": 160.95,
+              "p99Ns": 400,
+              "p999Ns": 500,
+              "maxNs": 22600,
+              "rehashes": 0,
+              "over10us": 1,
+              "startLive": 0,
+              "endLive": 268
+            },
+            {
+              "decile": 2,
+              "meanNs": 179.53,
+              "p99Ns": 400,
+              "p999Ns": 600,
+              "maxNs": 257900,
+              "rehashes": 0,
+              "over10us": 10,
+              "startLive": 268,
+              "endLive": 147
+            },
+            {
+              "decile": 3,
+              "meanNs": 187.14,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 739300,
+              "rehashes": 0,
+              "over10us": 14,
+              "startLive": 147,
+              "endLive": 156
+            },
+            {
+              "decile": 4,
+              "meanNs": 211.16,
+              "p99Ns": 400,
+              "p999Ns": 600,
+              "maxNs": 1288200,
+              "rehashes": 0,
+              "over10us": 12,
+              "startLive": 156,
+              "endLive": 659
+            },
+            {
+              "decile": 5,
+              "meanNs": 196.65,
+              "p99Ns": 400,
+              "p999Ns": 700,
+              "maxNs": 885500,
+              "rehashes": 0,
+              "over10us": 8,
+              "startLive": 659,
+              "endLive": 654
+            },
+            {
+              "decile": 6,
+              "meanNs": 161.45,
+              "p99Ns": 400,
+              "p999Ns": 500,
+              "maxNs": 11900,
+              "rehashes": 0,
+              "over10us": 1,
+              "startLive": 654,
+              "endLive": 213
+            },
+            {
+              "decile": 7,
+              "meanNs": 149.76,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 17400,
+              "rehashes": 0,
+              "over10us": 2,
+              "startLive": 213,
+              "endLive": 209
+            },
+            {
+              "decile": 8,
+              "meanNs": 172.45,
+              "p99Ns": 400,
+              "p999Ns": 700,
+              "maxNs": 34900,
+              "rehashes": 0,
+              "over10us": 4,
+              "startLive": 209,
+              "endLive": 931
+            },
+            {
+              "decile": 9,
+              "meanNs": 204.74,
+              "p99Ns": 400,
+              "p999Ns": 600,
+              "maxNs": 288400,
+              "rehashes": 0,
+              "over10us": 13,
+              "startLive": 931,
+              "endLive": 1138
+            },
+            {
+              "decile": 10,
+              "meanNs": 200.39,
+              "p99Ns": 400,
+              "p999Ns": 500,
+              "maxNs": 571500,
+              "rehashes": 0,
+              "over10us": 16,
+              "startLive": 1138,
+              "endLive": 1226
+            }
+          ]
+        },
+        {
+          "key": "full",
+          "label": "Full Reserve",
+          "reserve": 1000000,
+          "median": 7915331,
+          "min": 7548321,
+          "max": 8897715,
+          "rounds": [
+            8897715,
+            7548321,
+            8058920,
+            7915331,
+            7875541
+          ],
+          "checksum": "11379043276809673099",
+          "deciles": [
+            {
+              "decile": 1,
+              "meanNs": 172.04,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 268600,
+              "rehashes": 0,
+              "over10us": 9,
+              "startLive": 0,
+              "endLive": 268
+            },
+            {
+              "decile": 2,
+              "meanNs": 157.37,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 244000,
+              "rehashes": 0,
+              "over10us": 7,
+              "startLive": 268,
+              "endLive": 147
+            },
+            {
+              "decile": 3,
+              "meanNs": 159.72,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 276700,
+              "rehashes": 0,
+              "over10us": 11,
+              "startLive": 147,
+              "endLive": 156
+            },
+            {
+              "decile": 4,
+              "meanNs": 147.56,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 541800,
+              "rehashes": 0,
+              "over10us": 11,
+              "startLive": 156,
+              "endLive": 659
+            },
+            {
+              "decile": 5,
+              "meanNs": 133.4,
+              "p99Ns": 300,
+              "p999Ns": 600,
+              "maxNs": 287800,
+              "rehashes": 0,
+              "over10us": 11,
+              "startLive": 659,
+              "endLive": 654
+            },
+            {
+              "decile": 6,
+              "meanNs": 126.75,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 249800,
+              "rehashes": 0,
+              "over10us": 10,
+              "startLive": 654,
+              "endLive": 213
+            },
+            {
+              "decile": 7,
+              "meanNs": 127.11,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 256800,
+              "rehashes": 0,
+              "over10us": 7,
+              "startLive": 213,
+              "endLive": 209
+            },
+            {
+              "decile": 8,
+              "meanNs": 141.51,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 255000,
+              "rehashes": 0,
+              "over10us": 12,
+              "startLive": 209,
+              "endLive": 931
+            },
+            {
+              "decile": 9,
+              "meanNs": 133.23,
+              "p99Ns": 300,
+              "p999Ns": 600,
+              "maxNs": 254400,
+              "rehashes": 0,
+              "over10us": 10,
+              "startLive": 931,
+              "endLive": 1138
+            },
+            {
+              "decile": 10,
+              "meanNs": 130.24,
+              "p99Ns": 300,
+              "p999Ns": 500,
+              "maxNs": 259900,
+              "rehashes": 0,
+              "over10us": 9,
+              "startLive": 1138,
+              "endLive": 1226
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "mixed",
+      "label": "Mixed Activity",
+      "desc": "Submissions, matching, and cancellations",
+      "peakLive": 146085,
+      "operations": 1000000,
+      "configs": [
+        {
+          "key": "none",
+          "label": "No Reserve",
+          "reserve": 0,
+          "median": 5718642,
+          "min": 5025199,
+          "max": 6621096,
+          "rounds": [
+            5330928,
+            5718642,
+            5025199,
+            6572569,
+            6621096
+          ],
+          "checksum": "14965322057352458502",
+          "deciles": [
+            {
+              "decile": 1,
+              "meanNs": 163.52,
+              "p99Ns": 300,
+              "p999Ns": 2200,
+              "maxNs": 248500,
+              "rehashes": 11,
+              "over10us": 34,
+              "startLive": 0,
+              "endLive": 15088
+            },
+            {
+              "decile": 2,
+              "meanNs": 175.41,
+              "p99Ns": 300,
+              "p999Ns": 3200,
+              "maxNs": 318800,
+              "rehashes": 1,
+              "over10us": 28,
+              "startLive": 15088,
+              "endLive": 29566
+            },
+            {
+              "decile": 3,
+              "meanNs": 178.14,
+              "p99Ns": 300,
+              "p999Ns": 3300,
+              "maxNs": 596300,
+              "rehashes": 1,
+              "over10us": 26,
+              "startLive": 29566,
+              "endLive": 44354
+            },
+            {
+              "decile": 4,
+              "meanNs": 179.82,
+              "p99Ns": 300,
+              "p999Ns": 3400,
+              "maxNs": 297700,
+              "rehashes": 0,
+              "over10us": 29,
+              "startLive": 44354,
+              "endLive": 58636
+            },
+            {
+              "decile": 5,
+              "meanNs": 187.17,
+              "p99Ns": 400,
+              "p999Ns": 3400,
+              "maxNs": 300400,
+              "rehashes": 0,
+              "over10us": 29,
+              "startLive": 58636,
+              "endLive": 73518
+            },
+            {
+              "decile": 6,
+              "meanNs": 238.67,
+              "p99Ns": 400,
+              "p999Ns": 3500,
+              "maxNs": 2136700,
+              "rehashes": 1,
+              "over10us": 29,
+              "startLive": 73518,
+              "endLive": 87820
+            },
+            {
+              "decile": 7,
+              "meanNs": 185.61,
+              "p99Ns": 400,
+              "p999Ns": 3400,
+              "maxNs": 281500,
+              "rehashes": 0,
+              "over10us": 23,
+              "startLive": 87820,
+              "endLive": 101991
+            },
+            {
+              "decile": 8,
+              "meanNs": 208.89,
+              "p99Ns": 400,
+              "p999Ns": 3400,
+              "maxNs": 267100,
+              "rehashes": 0,
+              "over10us": 28,
+              "startLive": 101991,
+              "endLive": 116520
+            },
+            {
+              "decile": 9,
+              "meanNs": 201.74,
+              "p99Ns": 400,
+              "p999Ns": 3300,
+              "maxNs": 252000,
+              "rehashes": 0,
+              "over10us": 31,
+              "startLive": 116520,
+              "endLive": 131637
+            },
+            {
+              "decile": 10,
+              "meanNs": 223.19,
+              "p99Ns": 500,
+              "p999Ns": 3500,
+              "maxNs": 283000,
+              "rehashes": 0,
+              "over10us": 30,
+              "startLive": 131637,
+              "endLive": 146084
+            }
+          ]
+        },
+        {
+          "key": "peak",
+          "label": "Peak-Live Reserve",
+          "reserve": 146085,
+          "median": 7061957,
+          "min": 5947778,
+          "max": 7310556,
+          "rounds": [
+            6043351,
+            5947778,
+            7090650,
+            7310556,
+            7061957
+          ],
+          "checksum": "14965322057352458502",
+          "deciles": [
+            {
+              "decile": 1,
+              "meanNs": 177.13,
+              "p99Ns": 500,
+              "p999Ns": 3000,
+              "maxNs": 296700,
+              "rehashes": 0,
+              "over10us": 37,
+              "startLive": 0,
+              "endLive": 15088
+            },
+            {
+              "decile": 2,
+              "meanNs": 176.89,
+              "p99Ns": 400,
+              "p999Ns": 3000,
+              "maxNs": 331100,
+              "rehashes": 0,
+              "over10us": 32,
+              "startLive": 15088,
+              "endLive": 29566
+            },
+            {
+              "decile": 3,
+              "meanNs": 185.36,
+              "p99Ns": 500,
+              "p999Ns": 3100,
+              "maxNs": 239800,
+              "rehashes": 0,
+              "over10us": 37,
+              "startLive": 29566,
+              "endLive": 44354
+            },
+            {
+              "decile": 4,
+              "meanNs": 185.29,
+              "p99Ns": 400,
+              "p999Ns": 3300,
+              "maxNs": 416300,
+              "rehashes": 0,
+              "over10us": 30,
+              "startLive": 44354,
+              "endLive": 58636
+            },
+            {
+              "decile": 5,
+              "meanNs": 179.65,
+              "p99Ns": 400,
+              "p999Ns": 3400,
+              "maxNs": 285500,
+              "rehashes": 0,
+              "over10us": 28,
+              "startLive": 58636,
+              "endLive": 73518
+            },
+            {
+              "decile": 6,
+              "meanNs": 198.31,
+              "p99Ns": 400,
+              "p999Ns": 3400,
+              "maxNs": 261100,
+              "rehashes": 0,
+              "over10us": 31,
+              "startLive": 73518,
+              "endLive": 87820
+            },
+            {
+              "decile": 7,
+              "meanNs": 208.45,
+              "p99Ns": 400,
+              "p999Ns": 3400,
+              "maxNs": 456200,
+              "rehashes": 0,
+              "over10us": 37,
+              "startLive": 87820,
+              "endLive": 101991
+            },
+            {
+              "decile": 8,
+              "meanNs": 218.77,
+              "p99Ns": 400,
+              "p999Ns": 3400,
+              "maxNs": 304100,
+              "rehashes": 0,
+              "over10us": 38,
+              "startLive": 101991,
+              "endLive": 116520
+            },
+            {
+              "decile": 9,
+              "meanNs": 211.93,
+              "p99Ns": 400,
+              "p999Ns": 3500,
+              "maxNs": 329400,
+              "rehashes": 0,
+              "over10us": 30,
+              "startLive": 116520,
+              "endLive": 131637
+            },
+            {
+              "decile": 10,
+              "meanNs": 220.8,
+              "p99Ns": 500,
+              "p999Ns": 3500,
+              "maxNs": 292800,
+              "rehashes": 0,
+              "over10us": 33,
+              "startLive": 131637,
+              "endLive": 146084
+            }
+          ]
+        },
+        {
+          "key": "full",
+          "label": "Full Reserve",
+          "reserve": 1000000,
+          "median": 6824821,
+          "min": 6323675,
+          "max": 7972384,
+          "rounds": [
+            6824821,
+            6600913,
+            6323675,
+            7972384,
+            7719880
+          ],
+          "checksum": "14965322057352458502",
+          "deciles": [
+            {
+              "decile": 1,
+              "meanNs": 152.41,
+              "p99Ns": 400,
+              "p999Ns": 3300,
+              "maxNs": 260800,
+              "rehashes": 0,
+              "over10us": 30,
+              "startLive": 0,
+              "endLive": 15088
+            },
+            {
+              "decile": 2,
+              "meanNs": 166.63,
+              "p99Ns": 300,
+              "p999Ns": 3100,
+              "maxNs": 260800,
+              "rehashes": 0,
+              "over10us": 34,
+              "startLive": 15088,
+              "endLive": 29566
+            },
+            {
+              "decile": 3,
+              "meanNs": 185.06,
+              "p99Ns": 400,
+              "p999Ns": 3100,
+              "maxNs": 354400,
+              "rehashes": 0,
+              "over10us": 38,
+              "startLive": 29566,
+              "endLive": 44354
+            },
+            {
+              "decile": 4,
+              "meanNs": 166.45,
+              "p99Ns": 300,
+              "p999Ns": 3100,
+              "maxNs": 243200,
+              "rehashes": 0,
+              "over10us": 28,
+              "startLive": 44354,
+              "endLive": 58636
+            },
+            {
+              "decile": 5,
+              "meanNs": 168.68,
+              "p99Ns": 300,
+              "p999Ns": 3400,
+              "maxNs": 271500,
+              "rehashes": 0,
+              "over10us": 31,
+              "startLive": 58636,
+              "endLive": 73518
+            },
+            {
+              "decile": 6,
+              "meanNs": 186.59,
+              "p99Ns": 500,
+              "p999Ns": 3300,
+              "maxNs": 519700,
+              "rehashes": 0,
+              "over10us": 27,
+              "startLive": 73518,
+              "endLive": 87820
+            },
+            {
+              "decile": 7,
+              "meanNs": 191.14,
+              "p99Ns": 400,
+              "p999Ns": 3100,
+              "maxNs": 253700,
+              "rehashes": 0,
+              "over10us": 29,
+              "startLive": 87820,
+              "endLive": 101991
+            },
+            {
+              "decile": 8,
+              "meanNs": 188.51,
+              "p99Ns": 400,
+              "p999Ns": 3300,
+              "maxNs": 265900,
+              "rehashes": 0,
+              "over10us": 33,
+              "startLive": 101991,
+              "endLive": 116520
+            },
+            {
+              "decile": 9,
+              "meanNs": 210.39,
+              "p99Ns": 500,
+              "p999Ns": 3300,
+              "maxNs": 559300,
+              "rehashes": 0,
+              "over10us": 32,
+              "startLive": 116520,
+              "endLive": 131637
+            },
+            {
+              "decile": 10,
+              "meanNs": 228.55,
+              "p99Ns": 600,
+              "p999Ns": 3400,
+              "maxNs": 423700,
+              "rehashes": 0,
+              "over10us": 36,
+              "startLive": 131637,
+              "endLive": 146084
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
