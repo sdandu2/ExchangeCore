@@ -30,6 +30,7 @@ struct Options {
     std::uint64_t seed = 31;
     std::string workload = "mixed";
     unsigned repeats = 3;
+    std::size_t reserve_ids = 0;
     std::string csv;
 };
 
@@ -180,8 +181,9 @@ void apply_event(OrderBook& book, const Event& event, Metrics& metrics) {
 }
 
 struct ThroughputRun { double seconds; Metrics metrics; };
-ThroughputRun run_throughput(const std::vector<Event>& events) {
+ThroughputRun run_throughput(const std::vector<Event>& events, std::size_t reserve_ids) {
     OrderBook book;
+    if (reserve_ids != 0) book.reserve_order_ids(reserve_ids);
     Metrics metrics;
     const auto begin = Clock::now();
     for (const auto& event : events) apply_event(book, event, metrics);
@@ -191,8 +193,9 @@ ThroughputRun run_throughput(const std::vector<Event>& events) {
 }
 
 struct LatencyRun { std::vector<std::uint64_t> nanoseconds; Metrics metrics; };
-LatencyRun run_latency(const std::vector<Event>& events) {
+LatencyRun run_latency(const std::vector<Event>& events, std::size_t reserve_ids) {
     OrderBook book;
+    if (reserve_ids != 0) book.reserve_order_ids(reserve_ids);
     Metrics metrics;
     std::vector<std::uint64_t> samples;
     samples.reserve(events.size());
@@ -250,7 +253,8 @@ std::uint64_t parse_uint(std::string_view input, const char* flag) {
 
 void print_usage() {
     std::cout << "Usage: exchangecore_bench [--orders N] [--seed N] "
-                 "[--workload passive|crossing|mixed] [--repeats N] [--csv PATH]\n"
+                 "[--workload passive|crossing|mixed] [--repeats N] "
+                 "[--reserve-ids N] [--csv PATH]\n"
                  "Defaults: --orders 100000 --seed 31 --workload mixed --repeats 3\n";
 }
 
@@ -268,6 +272,11 @@ Options parse_options(int argc, char** argv) {
             if (requested < 1 || requested > 10)
                 throw std::runtime_error("--repeats must be between 1 and 10");
             options.repeats = static_cast<unsigned>(requested);
+        }
+        else if (flag == "--reserve-ids") {
+            const auto count = parse_uint(value, "--reserve-ids");
+            if (count > 2'000'000) throw std::runtime_error("--reserve-ids must be <= 2000000");
+            options.reserve_ids = static_cast<std::size_t>(count);
         }
         else if (flag == "--workload") options.workload = std::string(value);
         else if (flag == "--csv") options.csv = std::string(value);
@@ -306,7 +315,7 @@ void save_csv(const Options& options, const Metrics& m, double median_seconds,
     if (add_header)
         file << "compiler,build_type,workload,seed,operations,repeats,median_seconds,median_ops_per_sec,"
                 "mean_latency_ns,p50_ns,p95_ns,p99_ns,p999_ns,submitted,cancelled,trades,"
-                "units_executed,remaining_orders,checksum\n";
+                "units_executed,remaining_orders,checksum,preflight_mode,reserve_ids\n";
     file << compiler_name() << ',';
 #ifdef NDEBUG
     file << "Release";
@@ -318,7 +327,13 @@ void save_csv(const Options& options, const Metrics& m, double median_seconds,
          << median_seconds << ',' << std::setprecision(2) << median_throughput << ','
          << mean_ns << ',' << p50 << ',' << p95 << ',' << p99 << ',' << p999 << ','
          << m.submitted << ',' << m.cancelled << ',' << m.trades << ',' << m.units_executed
-         << ',' << m.remaining_orders << ',' << m.checksum << '\n';
+         << ',' << m.remaining_orders << ',' << m.checksum << ','
+#ifdef EXCHANGECORE_LEGACY_PREFLIGHT
+         << "legacy"
+#else
+         << "selective"
+#endif
+         << ',' << options.reserve_ids << '\n';
     if (!file) throw std::runtime_error("failed writing benchmark CSV");
 }
 
@@ -331,7 +346,7 @@ int run(int argc, char** argv) {
     seconds.reserve(options.repeats);
     Metrics reference;
     for (unsigned i = 0; i < options.repeats; ++i) {
-        const auto result = run_throughput(events);
+        const auto result = run_throughput(events, options.reserve_ids);
         if (i == 0) reference = result.metrics;
         else if (result.metrics != reference)
             throw std::runtime_error("throughput trials produced different outcomes");
@@ -348,7 +363,7 @@ int run(int argc, char** argv) {
     };
     const double median_rate = median(rates);
     const double median_seconds = median(seconds);
-    auto latency = run_latency(events);
+    auto latency = run_latency(events, options.reserve_ids);
     if (latency.metrics != reference)
         throw std::runtime_error("latency and throughput replay outcomes differ");
     std::sort(latency.nanoseconds.begin(), latency.nanoseconds.end());
@@ -360,7 +375,14 @@ int run(int argc, char** argv) {
     const auto p99 = percentile(latency.nanoseconds, 99, 100);
     const auto p999 = percentile(latency.nanoseconds, 999, 1000);
 
-    std::cout << "ExchangeCore v0.4 - Performance Benchmarks\n"
+    std::cout << "ExchangeCore v0.5 - Performance Benchmarks\n"
+              << "Preflight: " <<
+#ifdef EXCHANGECORE_LEGACY_PREFLIGHT
+                 "legacy (v0.4)\n"
+#else
+                 "selective (v0.5)\n"
+#endif
+              << "Order-ID reserve hint: " << options.reserve_ids << '\n'
               << "Compiler: " << compiler_name() << '\n'
               << "Build: " <<
 #ifdef NDEBUG

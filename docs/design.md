@@ -1,4 +1,4 @@
-# ExchangeCore v0.3 — Matching engine design
+# ExchangeCore — Matching engine design (v0.5)
 
 ## Scope
 
@@ -15,7 +15,7 @@ Single-threaded, in-memory limit-order matching, one logical order book; no pers
 ## Matching protocol
 
 1. Validate order fields, side, and active ID uniqueness.
-2. Preflight the portion that would rest and reject an aggregate-level quantity overflow *before any trade*. This uses a read-only scan of crossing price levels.
+2. Preflight aggregate overflow *before any trade*. The optimized path avoids the opposite-book scan if the full incoming quantity fits at the same-side price level; otherwise it runs the original exact read-only scan.
 3. If marketable, repeatedly match the most competitive price level. At each level, fill the oldest live maker first and execute at the maker's price.
 4. Reduce maker and level quantities by fill size; remove completed maker orders and empty price levels.
 5. If any incoming quantity remains after all eligible prices, append it at the end of its price level's FIFO list.
@@ -37,7 +37,7 @@ Single-threaded, in-memory limit-order matching, one logical order book; no pers
 Let `P` = number of levels and `F` = number of maker orders filled.
 
 - Validate/check active ID: expected O(1) hash lookup
-- Preflight: O(P) worst case for crossing levels
+- Preflight: O(log P) typical same-side level lookup; O(P + log P) worst case when an overflow-risk order requires scanning opposite levels
 - Match: O(F + P log P) worst case including traversing/removing crossed levels and ID erasures
 - Cancel: expected O(1) ID lookup + O(log P) map lookup/removal
 - Best bid/ask: O(1)
@@ -59,3 +59,9 @@ The test binary verifies the original passive order book behavior where still re
 ## v0.4 — Performance harness
 
 The core order-book API and matching semantics are unchanged. `exchangecore_bench` is a separate executable, linked against the same `exchangecore_core` library as the demo and tests. It generates input outside measured regions, validates event outcomes through deterministic replay, and reports both bulk throughput and individually sampled latency. See [benchmarking.md](benchmarking.md) for measurement methodology, workload mix, and limitations.
+
+## v0.5 — Controlled performance changes
+
+- `OrderBook::reserve_order_ids(N)` is an optional unordered-map capacity hint, not an order limit or a pool allocator. It can avoid some rehashes while allocating more memory up front.
+- `EXCHANGECORE_LEGACY_PREFLIGHT=ON` uses the v0.4 preflight for A/B comparisons. Both modes should pass identical tests and produce identical event-replay checksums.
+- See [optimization-v0.5.md](optimization-v0.5.md) for the experiment design and measurement cautions.

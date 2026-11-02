@@ -3,7 +3,7 @@ param(
     [ValidateRange(1, 2000000)][int]$Orders = 100000,
     [UInt64]$Seed = 31,
     [ValidateRange(1, 10)][int]$Repeats = 3,
-    [string]$Csv = "benchmarks/results/v0.4.csv"
+    [string]$Csv = "benchmarks/results/v0.5.csv"
 )
 
 $ErrorActionPreference = "Stop"

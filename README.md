@@ -1,106 +1,47 @@
-# ExchangeCore
+# ExchangeCore v0.5 — controlled performance optimization
 
-**v0.4 — a C++20 limit-order matching engine with reproducible performance benchmarks.**
+A C++20 single-threaded, in-process price-time priority limit order book and matching engine.
 
-Single-threaded, in-memory exchange simulator. Emphasizes correctness and measured engineering rather than unsupported "low-latency" claims. No brokerage connectivity and no real-money trading.
+**New in v0.5:**
+- Selective overflow preflight avoids scanning opposite-side levels unless overflow could occur.
+- `OrderBook::reserve_order_ids(expected_live_orders)` optionally pre-sizes the active-order hash index. This is an optimization hint, **not** a limit on order capacity.
+- `exchangecore_bench --reserve-ids N` measures the effect of index capacity reservations.
+- `EXCHANGECORE_LEGACY_PREFLIGHT=ON` preserves the original v0.4 overflow-validation algorithm so it can be benchmarked with otherwise identical v0.5 code.
+- A paired Windows PowerShell runner performs the same deterministic workloads and checks the replay checksums between variants.
+- Three new correctness tests (34 internal cases total), plus three benchmark smoke tests.
 
-## What's implemented
+## Run on Windows (MSYS2 UCRT64, PowerShell)
 
-- Price-time-priority FIFO limit-order matching using integer price ticks
-- Partial fills, multi-level sweeps, maker-price executions, cancellations
-- Quantity conservation, active ID validation, overflow checks
-- 31 internal matching-engine correctness cases (one CTest executable)
-- Three additional CTest benchmark smoke tests (`passive`, `crossing`, `mixed`)
-- GitHub Actions CI building/testing on Windows and Linux
-- Configurable benchmark: seed, operation count, workload, repeat count, CSV output
-- Separate bulk-throughput and per-operation-latency passes; replay digest cross-check
-
-## Project structure
-
-```text
-ExchangeCore/
-├── include/exchangecore/         C++ public types and order-book API
-├── src/                          Matching engine and console demo
-├── tests/                        Correctness tests
-├── benchmarks/matching_bench.cpp Deterministic workload / measurement CLI
-├── benchmarks/results/           Local CSV measurements (ignored by Git)
-├── scripts/run_benchmarks.ps1     Run all three workloads from VS Code
-├── docs/design.md                Engine behavior and design limitations
-├── docs/benchmarking.md          Benchmarking methodology and caveats
-├── .github/workflows/ci.yml      CI for MSVC/Windows and GCC/Linux
-├── CMakeLists.txt
-├── .gitattributes
-└── .gitignore
-```
-
-## Requirements
-
-- CMake >= 3.20
-- C++20 compiler: MSVC, modern GCC (MSYS2 UCRT64 on Windows), or Clang
-- Visual Studio Code + PowerShell recommended for Windows
-
-## Windows setup: build and test with MSYS2 GCC (Release)
-
-Use VS Code **PowerShell** in your `ExchangeCore` directory. Use a **new Release build directory** to avoid timing Debug binaries:
+From the `ExchangeCore` project root:
 
 ```powershell
 $env:Path = "C:\msys64\ucrt64\bin;$env:Path"
-cmake -S . -B build-gcc-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe" -DCMAKE_MAKE_PROGRAM="C:/msys64/ucrt64/bin/mingw32-make.exe"
-cmake --build build-gcc-release
-ctest --test-dir build-gcc-release --output-on-failure
-.\build-gcc-release\exchangecore.exe
+cmake -S . -B build-v05-optimized -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe" -DCMAKE_MAKE_PROGRAM="C:/msys64/ucrt64/bin/mingw32-make.exe" -DEXCHANGECORE_LEGACY_PREFLIGHT=OFF
+cmake --build build-v05-optimized
+ctest --test-dir build-v05-optimized --output-on-failure
+.\build-v05-optimized\exchangecore.exe
 ```
 
-To run **all three** benchmark workloads and save one CSV:
+### Compare baseline vs improvements
 
 ```powershell
-.\scripts\run_benchmarks.ps1 -BuildDir build-gcc-release -Orders 100000 -Seed 31 -Repeats 3
+.\scripts\compare_v05.ps1 -Orders 200000 -Seed 31 -Repeats 5
 ```
 
-If script execution is restricted, run the binary directly:
+The script builds the legacy-preflight and optimized-preflight versions and benchmarks three configurations against the same generated workload:
 
-```powershell
-.\build-gcc-release\exchangecore_bench.exe --orders 100000 --seed 31 --workload mixed --repeats 3 --csv benchmarks/results/v0.4.csv
-```
+1. Original v0.4-style overflow preflight, no reserved index
+2. v0.5 selective preflight, no reserved index
+3. v0.5 selective preflight, index reserve equal to operation count
 
-Run the other workloads by substituting `passive` and `crossing` for `mixed`.
+All combinations must produce the same checksum for each workload. Results are written to `benchmarks/results/v0.5-comparison.csv` (ignored by Git). Run `-Orders 1000000` later for your reference-scale experiment if RAM allows. Reserving `Orders` entries is an intentionally generous hint and can increase memory consumption; it is not necessarily optimal, especially for crossing workloads with small resting books.
 
-### MSVC build
+If scripts are blocked by PowerShell execution policy, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\compare_v05.ps1 -Orders 200000 -Repeats 5` **only if you trust this project's script**; alternatively use the manual commands in `docs/optimization-v0.5.md`.
 
-Keep your working `build/` MSVC/NMake configuration for correctness testing. For meaningful MSVC performance measurements, configure a **separate Release build** in a terminal where `cl` and `nmake` are available:
+For full interface, command-line switches, definitions, benchmarking limits and methodology, see `docs/benchmarking.md`, `docs/optimization-v0.5.md`, and `docs/design.md`.
 
-```powershell
-cmake -S . -B build-msvc-release -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
-cmake --build build-msvc-release
-ctest --test-dir build-msvc-release --output-on-failure
-.\build-msvc-release\exchangecore_bench.exe --workload mixed --orders 100000 --repeats 3 --seed 31 --csv benchmarks/results/v0.4-msvc.csv
-```
+## What the benchmark measures
 
-For a regular MSVC Debug build, run `cmake --build build` and `ctest --test-dir build --output-on-failure`.
+The benchmark times **single-threaded, in-process** order submission and cancellation. It excludes networking, persistence, serialization, and input generation. It uses a separately timed latency replay, which includes clock overhead and scheduling effects. A single experiment is not evidence of production-ready or deterministic microsecond latency.
 
-## Benchmark interface
-
-```text
-exchangecore_bench [--orders N] [--seed N]
-                   [--workload passive|crossing|mixed]
-                   [--repeats N] [--csv PATH]
-```
-
-Defaults: **100,000 operations**, **seed 31**, **mixed** workload, **3 repeats**.
-
-- `passive`: mostly non-crossing submissions; stresses accumulating resting orders
-- `crossing`: deliberately marketable submissions when opposite liquidity exists
-- `mixed`: passive and aggressive submissions plus valid cancellations (roughly 15% when orders exist)
-
-The CLI reports **operations per second** (submissions plus cancellations), latency mean and nearest-rank p50/p95/p99/p99.9, trade count, executed quantity, remaining orders, and a replay checksum. The CSV stores one row per invocation; repeated commands append more rows.
-
-See [docs/benchmarking.md](docs/benchmarking.md) for important interpretation notes. **Do not use the example numbers from someone else's hardware as your own.**
-
-## Current limitations / next steps
-
-- Single-threaded, single-book simulator, no network round trips, persistence, or production exchange fault-tolerance
-- Latency samples include high-resolution timer overhead and are subject to OS scheduling noise
-- Benchmark workload is synthetic, not a calibrated exchange feed
-- No assertion that performance is "HFT-grade" or faster than commercial matching engines
-
-Next: v0.5 event logging and replay, then production-style APIs, observability, and UI.
+For each change, run both builds under identical parameters, check correctness, record CPU/compiler/compiler flags, and compare *within the same machine*. Do not compare absolute throughput from different computers as if all conditions were controlled.
