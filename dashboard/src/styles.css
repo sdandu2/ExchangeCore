@@ -198,3 +198,66 @@ h1 { font-size: clamp(28px, 3vw, 37px); font-weight: 800; letter-spacing: -1.3px
   .side-nav .nav-item { font-size: 0; justify-content: center; }
   .side-nav .nav-item svg { flex: 0 0 auto; }
 }
+
+/* v1.3 engineering performance workspace */
+.perf-heading { margin-bottom: 24px; }
+.perf-heading > a { white-space: nowrap; }
+.perf-provenance { border: 1px solid #31534b; background: linear-gradient(100deg,#15332f,#14252e); padding: 16px 20px; border-radius: 10px; display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
+.perf-provenance-icon { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 9px; color: #8ff1c9; background: #255247; }
+.perf-provenance-text { display: grid; gap: 5px; flex: 1; }
+.perf-provenance-text strong { font-size: 13px; }
+.perf-provenance-text span { font-size: 11px; color: #98b7b7; }
+.perf-measured-tag { display: inline-flex; align-items: center; gap: 7px; font: 700 10px 'IBM Plex Mono',monospace; color: #7ce4b9; white-space: nowrap; }
+.perf-selector { display: flex; gap: 18px; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 12px; }
+.perf-selector label { color: #f1f8f8; font-size: 13px; font-weight: 800; }
+.perf-selector-note { color: #74909f; margin-top: 4px; font-size: 11px; }
+.perf-workload-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+.perf-workload-buttons button { color: #a6bdc8; background: #162733; border: 1px solid #36505b; border-radius: 7px; font-size: 11px; padding: 10px 13px; font-weight: 700; }
+.perf-workload-buttons button.selected { color: #a0f0d0; background: #1b3c37; border-color: #459c7e; }
+.perf-context { display: flex; gap: 9px; align-items: center; color: #92adba; font-size: 11px; margin: 0 0 20px; }
+.perf-context svg { color: #76d6ba; flex-shrink: 0; }
+.perf-context strong { color: #d9edee; }
+.perf-metrics-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 13px; margin-bottom: 18px; }
+.perf-metric { background: linear-gradient(140deg,#152733,#111e29); border: 1px solid #2c414d; border-radius: 9px; padding: 20px; display: grid; gap: 10px; min-width: 0; }
+.perf-metric-label { font-size: 10px; color: #83a3b3; letter-spacing: .8px; font-weight: 800; }
+.perf-metric-value { font-size: clamp(22px,2.2vw,32px); letter-spacing: -1px; font-weight: 800; color: #eef5f5; font-variant-numeric: tabular-nums; }
+.perf-metric-value.positive, .perf-fact-list .positive { color: #79e3b7; }
+.perf-metric small { color: #718d9c; font-size: 10px; }
+.perf-main-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 17px; margin-bottom: 17px; align-items: stretch; }
+.perf-panel { display: flex; flex-direction: column; min-width: 0; }
+.perf-bars { padding: 3px 20px 17px; display: grid; gap: 11px; flex: 1; }
+.perf-bar-row { display: grid; gap: 9px; width: 100%; text-align: left; border: 1px solid transparent; background: #12232e; border-radius: 7px; padding: 12px 14px; color: #adc4d0; }
+.perf-bar-row:hover { background: #1b3340; }
+.perf-bar-row.active { border-color: #459f83; background: #1b3437; }
+.perf-bar-copy { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; font-size: 11px; font-weight: 700; }
+.perf-bar-copy strong { color: #f0f6f6; font-size: 17px; }
+.perf-bar-copy small { font-size: 9px; color: #8da6b4; }
+.perf-bar-track { height: 9px; border-radius: 5px; background: #243844; overflow: hidden; }
+.perf-bar-track span { height: 100%; border-radius: 5px; display: block; transition: width .2s; }
+.perf-bar-foot { font: 10px 'IBM Plex Mono',monospace; color: #8199a6; }
+.perf-panel-footer { display: flex; align-items: flex-start; gap: 8px; color: #7996a5; font-size: 10px; padding: 12px 19px 16px; border-top: 1px solid #253943; line-height: 1.6; }
+.perf-panel-footer svg { color: #79cbb9; flex: 0 0 auto; margin-top: 1px; }
+.perf-selected { padding: 4px 22px; color: #a8c4cb; font-size: 11px; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.perf-selected span:last-child { color: #7bdab7; }
+.perf-timeline-wrap { padding: 12px 14px 10px; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; }
+.perf-timeline { width: 100%; height: auto; min-height: 180px; }
+.perf-axis-label { font: 11px 'IBM Plex Mono',monospace; fill: #7792a0; }
+.perf-chart-foot { display: flex; justify-content: space-between; gap: 6px; font-size: 9px; color: #6b8999; padding: 0 13px; }
+.perf-fact-list { padding: 2px 20px 18px; flex: 1; }
+.perf-fact-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-bottom: 1px solid #2b3d49; }
+.perf-fact-list > div:last-child { border-bottom: none; }
+.perf-fact-list span { font-size: 11px; color: #85a0ac; }
+.perf-fact-list strong { font-size: 11px; text-align: right; }
+.perf-method { padding: 0 20px 18px; font-size: 11px; line-height: 1.7; color: #91aab6; }
+.perf-method strong { color: #dcebec; }
+.perf-disclosure { border: 1px solid #304b55; border-radius: 9px; background: #132832; padding: 19px 20px; margin-bottom: 18px; }
+.perf-disclosure > div:first-child { display: flex; align-items: center; gap: 9px; color: #90dfc1; font-size: 12px; }
+.perf-disclosure p { color: #8aa6b3; font-size: 11px; line-height: 1.7; }
+.perf-disclosure code { color: #bfdfd7; }
+.perf-disclosure-toggle { border: 0; background: transparent; display: inline-flex; gap: 8px; align-items: center; color: #7ddbbb; padding: 7px 0; font-size: 11px; font-weight: 700; }
+.perf-disclosure-detail { display: grid; gap: 8px; margin-top: 10px; color: #9db5c0; font-size: 10px; }
+@media(max-width:1200px) { .perf-main-grid { grid-template-columns: 1fr; } .perf-metrics-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media(max-width:680px) { .perf-metrics-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .perf-metric { padding: 13px; } .perf-provenance { flex-wrap: wrap; padding: 14px; } .perf-selected { flex-direction: column; } .perf-heading { align-items: flex-start; flex-direction: column; } .perf-workload-buttons button { padding: 8px; } .perf-chart-foot span:nth-child(2) { display:none; } }
+
+.mobile-quick-nav { display: none; }
+@media(max-width:620px) { .mobile-quick-nav { display: flex; overflow-x: auto; gap: 12px; padding: 11px 13px; border-bottom: 1px solid #233845; } .mobile-quick-nav a { color: #95d8c1; white-space: nowrap; font-size: 11px; font-weight: 700; } }

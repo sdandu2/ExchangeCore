@@ -1,4 +1,4 @@
-# ExchangeCore v1.2 — Read-only Market Terminal
+# ExchangeCore v1.3 — Read-Only Market And Engineering Terminal
 
 The React + TypeScript dashboard subscribes to **the existing local Python WebSocket
 stream**, not directly to Kraken. It displays only checksum-validated full L2 books
@@ -79,3 +79,7 @@ build an approved data-delivery architecture before a public demo.
 
 ## Recorded-data controls (v1.2)
 Start the Python backend in replay mode with a saved JSONL capture as shown in [`docs/replay-v1.2.md`](../docs/replay-v1.2.md). The toolbar appears only for recorded sessions. Live streams remain read-only and never accept commands.
+
+## Engineering Performance (v1.3)
+
+Open `http://127.0.0.1:5173/#performance` or select **Engine Performance** in the left navigation. The interactive comparison is based on archived user-run C++ measurements and is available even without a Python stream server. See [methodology and CSV provenance](../docs/engine-performance-v1.3.md). This is not a real-time performance monitor or a Kraken latency test.

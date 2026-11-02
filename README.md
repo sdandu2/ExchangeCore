@@ -1,4 +1,4 @@
-# ExchangeCore v1.2 — C++ Matching Engine + Live Market Terminal
+# ExchangeCore v1.3 — C++ Matching Engine + Live Market Terminal
 
 ExchangeCore combines a **C++20 simulated limit-order matching engine** with
 **read-only public Kraken spot market data**. The engine simulates price-time
@@ -65,13 +65,19 @@ py -m market_data.stream_server --replay market_data/records/synthetic-fixture.j
 The fixture is synthetic and is clearly labeled; your own `kraken-*.jsonl`
 recordings are real-feed captures from your machine.
 
+## v1.3 Engineering Performance Dashboard
+
+The new **Engine Performance** page at `http://127.0.0.1:5173/#performance` lets visitors explore the **actual archived v0.7 benchmarking results** from this project, including throughput across reservation strategies, chronological p99.9 latency diagnostics, rehash counts and the limits of these metrics. Unlike market prices, the performance page works offline without a stream server. The underlying CSV files are preserved in `benchmarks/snapshots/v0.7/` and the dashboard snapshot can be rebuilt with `py scripts/export_benchmark_snapshot.py`.
+
+See [v1.3 performance and methodology guide](docs/engine-performance-v1.3.md). This is still an **in-process simulated matching-engine benchmark**, not actual exchange execution latency.
+
 ## v1.2 historical replay and UX fixes
 
 The market-data server now supports replay-only pause/resume, speed, and seek-to-event-position controls. Recorded books are reconstructed from checksum-validated events and the frontend displays source timestamps on a time-proportional chart. The live mode remains read-only. Order-book VALUE (USD), locally paused trade tape, and graceful disconnect handling are included.
 
 See [historical replay guide](docs/replay-v1.2.md).
 
-## Real-time dashboard (v1.1)
+## Read-Only Real-Time Dashboard (v1.1–v1.3)
 
 The `dashboard/` folder contains a read-only React + TypeScript interface for
 verified Kraken Level 2 data, mid-price observations, depth, trade tape and feed
@@ -99,6 +105,7 @@ exposed publicly without appropriate provider permissions and security controls.
 - **v0.9:** public Kraken WebSocket collector, decimal-safe book, CRC32, JSONL replay.
 - **v1.0:** **local streaming API**, health/staleness, session resets, bounded fanout,
   read-only clients, validated live feed, and timed replay.
+- **v1.3:** Engineering Performance workspace with archived v0.7 measurements and UI polish.
 - **v1.2:** interactive replay and timestamp-aware chart; **v1.1:** React + TypeScript local live-market terminal with verified L2 book,
   trade tape, observed mid-price and feed health.
 
