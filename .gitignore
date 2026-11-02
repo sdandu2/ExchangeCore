@@ -1,0 +1,8 @@
+build/
+build-gcc/
+build-mingw/
+.vs/
+*.obj
+*.exe
+*.pdb
+*.ilk
