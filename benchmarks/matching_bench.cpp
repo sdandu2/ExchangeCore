@@ -33,6 +33,10 @@ struct Options {
     std::size_t reserve_ids = 0;
     std::string csv;
     std::string latency_csv;
+    bool profile_grid = false;
+    unsigned profile_rounds = 5;
+    std::string profile_csv;
+    std::string profile_latency_csv;
 };
 
 // A small, fully specified PRNG avoids implementation-dependent distributions.
@@ -109,7 +113,7 @@ Order make_order(OrderId id, bool aggressive, SplitMix64& rng, const OrderBook& 
     return {id, side, price, 1 + rng.below(100)};
 }
 
-std::vector<Event> generate_events(const Options& options) {
+std::vector<Event> generate_events(const Options& options, std::size_t* peak_live = nullptr) {
     SplitMix64 rng(options.seed);
     OrderBook reference;
     LiveOrders live;
@@ -138,6 +142,7 @@ std::vector<Event> generate_events(const Options& options) {
         }
         if (live.size() != reference.order_count())
             throw std::runtime_error("generator live ID count inconsistent with book");
+        if (peak_live != nullptr) *peak_live = std::max(*peak_live, live.size());
     }
     return events;
 }
@@ -256,6 +261,8 @@ void print_usage() {
     std::cout << "Usage: exchangecore_bench [--orders N] [--seed N] "
                  "[--workload passive|crossing|mixed] [--repeats N] "
                  "[--reserve-ids N] [--csv PATH] [--latency-csv PATH]\n"
+                 "  Profiling: [--profile-grid auto] [--profile-rounds N] "
+                 "[--profile-csv PATH] [--profile-latency-csv PATH]\n"
                  "Defaults: --orders 100000 --seed 31 --workload mixed --repeats 3\n";
 }
 
@@ -282,6 +289,17 @@ Options parse_options(int argc, char** argv) {
         else if (flag == "--workload") options.workload = std::string(value);
         else if (flag == "--csv") options.csv = std::string(value);
         else if (flag == "--latency-csv") options.latency_csv = std::string(value);
+        else if (flag == "--profile-grid") {
+            if (value != "auto") throw std::runtime_error("--profile-grid requires auto");
+            options.profile_grid = true;
+        }
+        else if (flag == "--profile-rounds") {
+            const auto n = parse_uint(value, "--profile-rounds");
+            if (n < 1 || n > 10) throw std::runtime_error("--profile-rounds must be 1..10");
+            options.profile_rounds = static_cast<unsigned>(n);
+        }
+        else if (flag == "--profile-csv") options.profile_csv = std::string(value);
+        else if (flag == "--profile-latency-csv") options.profile_latency_csv = std::string(value);
         else throw std::runtime_error("unknown argument " + std::string(flag));
     }
     if (options.orders == 0 || options.orders > 2'000'000)
@@ -379,9 +397,189 @@ void save_latency_diagnostics(const Options& options, const std::vector<Event>& 
     if (!out) throw std::runtime_error("failed writing latency diagnostics CSV");
 }
 
+
+// v0.7 experiment: interleave 0, observed-peak and maximum-op reservation.
+// The event stream is generated only once and is identical for every configuration.
+struct ProfileSample {
+    std::uint64_t ns;
+    std::size_t live;
+    std::size_t buckets;
+    std::size_t price_levels;
+    bool cancel;
+    bool removed_level;
+    bool rehash;
+};
+
+
+std::vector<ProfileSample> profile_latency(const std::vector<Event>& events,
+                                           std::size_t reserve_ids, Metrics& outcome) {
+    OrderBook book;
+    if (reserve_ids) book.reserve_order_ids(reserve_ids);
+    std::vector<ProfileSample> samples;
+    samples.reserve(events.size());
+    for (const Event& event : events) {
+        const BookStats before = book.stats(); // Always outside timed interval.
+        if (event.is_cancel) {
+            const auto start = Clock::now();
+            const bool ok = book.cancel(event.cancel_id);
+            const auto stop = Clock::now();
+            if (!ok) throw std::runtime_error("profile cancel failed");
+            const BookStats after = book.stats();
+            const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();
+            samples.push_back({static_cast<std::uint64_t>(ns), after.live_orders,
+                after.id_buckets, after.bid_levels + after.ask_levels, true,
+                after.bid_levels + after.ask_levels < before.bid_levels + before.ask_levels,
+                after.id_buckets != before.id_buckets});
+            ++outcome.cancelled;
+            mix(outcome, event.cancel_id);
+        } else {
+            const auto start = Clock::now();
+            const Submission result = book.submit(event.order);
+            const auto stop = Clock::now();
+            if (result.status != SubmitStatus::Accepted ||
+                result.executed_quantity + result.resting_quantity != event.order.quantity)
+                throw std::runtime_error("profile submit failed");
+            const BookStats after = book.stats();
+            const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count();
+            samples.push_back({static_cast<std::uint64_t>(ns), after.live_orders,
+                after.id_buckets, after.bid_levels + after.ask_levels, false, false,
+                after.id_buckets != before.id_buckets});
+            ++outcome.submitted;
+            outcome.trades += result.trades.size();
+            outcome.units_executed += result.executed_quantity;
+            mix(outcome, event.order.id);
+            mix(outcome, result.resting_quantity);
+            for (const auto& trade : result.trades) {
+                mix(outcome, trade.maker_id);
+                mix(outcome, trade.price_ticks);
+                mix(outcome, trade.quantity);
+            }
+        }
+    }
+    outcome.remaining_orders = book.order_count();
+    return samples;
+}
+
+// The diagnostics are descriptive, not attributed CPU profiles or allocation counts.
+void save_profile_latency(const Options& options, const std::vector<ProfileSample>& samples,
+                          std::size_t reserve, std::size_t peak_live) {
+    if (options.profile_latency_csv.empty()) return;
+    const std::filesystem::path path(options.profile_latency_csv);
+    if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path());
+    const bool header = !std::filesystem::exists(path) || std::filesystem::file_size(path)==0;
+    std::ofstream out(path, std::ios::app);
+    if (!out) throw std::runtime_error("cannot open profile latency CSV");
+    if (header)
+        out << "workload,seed,operations,peak_live,reserve_ids,decile,kind,count,mean_ns,p50_ns,p99_ns,p999_ns,max_ns,over10us,"
+               "observed_rehashes,cancel_level_removals,start_live,end_live,end_price_levels,end_buckets\n";
+    for (std::size_t d = 0; d < 10; ++d) {
+        const std::size_t first = samples.size() * d / 10;
+        const std::size_t end = samples.size() * (d+1) / 10;
+        if (first == end) continue;
+        const auto rehashes = static_cast<std::size_t>(std::count_if(samples.begin()+first, samples.begin()+end,
+            [](const ProfileSample& x){return x.rehash;}));
+        const auto prunes = static_cast<std::size_t>(std::count_if(samples.begin()+first, samples.begin()+end,
+            [](const ProfileSample& x){return x.cancel && x.removed_level;}));
+        for (int kind=0; kind<5; ++kind) {
+            std::vector<std::uint64_t> group;
+            group.reserve(end-first);
+            for (std::size_t i=first; i<end; ++i) {
+                const ProfileSample& x=samples[i];
+                const bool selected = kind == 0 || (kind == 1 && !x.cancel) ||
+                    (kind == 2 && x.cancel && !x.removed_level) ||
+                    (kind == 3 && x.cancel && x.removed_level) ||
+                    (kind == 4 && x.rehash);
+                if (selected) group.push_back(x.ns);
+            }
+            if (group.empty()) continue;
+            const auto over10us = static_cast<std::size_t>(std::count_if(group.begin(), group.end(),
+                [](std::uint64_t ns){return ns > 10'000;}));
+            const long double sum = std::accumulate(group.begin(), group.end(), 0.0L);
+            std::sort(group.begin(), group.end());
+            static const char* names[] = {"all","submit","cancel_kept_level","cancel_removed_level","index_rehash"};
+            out << options.workload << ',' << options.seed << ',' << samples.size() << ',' << peak_live
+                << ',' << reserve << ',' << d+1 << ',' << names[kind] << ',' << group.size() << ','
+                << std::fixed << std::setprecision(2) << static_cast<double>(sum/group.size()) << ','
+                << percentile(group,50,100) << ',' << percentile(group,99,100) << ','
+                << percentile(group,999,1000) << ',' << group.back() << ',' << over10us << ','
+                << rehashes << ',' << prunes << ',' << (first==0 ? 0 : samples[first-1].live)
+                << ',' << samples[end-1].live << ',' << samples[end-1].price_levels
+                << ',' << samples[end-1].buckets << '\n';
+        }
+    }
+    if (!out) throw std::runtime_error("failed writing profile latency CSV");
+}
+
+int run_profile(const Options& options, const std::vector<Event>& events, std::size_t peak_live) {
+    std::vector<std::size_t> reserve_choices = {0, peak_live, options.orders};
+    // De-duplicate when an entirely passive workload has peak_live == orders.
+    std::sort(reserve_choices.begin(), reserve_choices.end());
+    reserve_choices.erase(std::unique(reserve_choices.begin(), reserve_choices.end()), reserve_choices.end());
+    std::vector<std::vector<double>> rates(reserve_choices.size());
+    const std::filesystem::path raw_path(options.profile_csv);
+    std::ofstream raw;
+    if (!options.profile_csv.empty()) {
+        if (!raw_path.parent_path().empty()) std::filesystem::create_directories(raw_path.parent_path());
+        raw.open(raw_path, std::ios::trunc); // fresh run, not an accumulated prior CSV.
+        if (!raw) throw std::runtime_error("cannot open profile throughput CSV");
+        raw << "compiler,workload,seed,operations,peak_live,round,sequence_position,reserve_ids,seconds,ops_per_sec,checksum\n";
+    }
+    Metrics reference;
+    bool have_reference = false;
+    std::cout << "ExchangeCore v0.7 - interleaved capacity experiment\n"
+              << "Workload: " << options.workload << " | Seed: " << options.seed
+              << " | Operations: " << events.size() << " | Peak live orders: " << peak_live
+              << " | Rounds: " << options.profile_rounds << '\n';
+    for (unsigned round=0; round<options.profile_rounds; ++round) {
+        std::vector<std::size_t> order(reserve_choices.size());
+        std::iota(order.begin(), order.end(), 0);
+        std::rotate(order.begin(), order.begin() + round % order.size(), order.end());
+        if (round % 2 == 1) std::reverse(order.begin(), order.end());
+        for (std::size_t position=0; position<order.size(); ++position) {
+            const std::size_t i=order[position];
+            const auto run = run_throughput(events, reserve_choices[i]);
+            if (run.seconds <= 0) throw std::runtime_error("throughput interval too short");
+            if (!have_reference) { reference=run.metrics; have_reference=true; }
+            else if (run.metrics != reference)
+                throw std::runtime_error("replay mismatch between reservation settings");
+            const double rate = static_cast<double>(events.size()) / run.seconds;
+            rates[i].push_back(rate);
+            if (raw) raw << compiler_name() << ',' << options.workload << ',' << options.seed << ','
+                << events.size() << ',' << peak_live << ',' << round+1 << ',' << position+1 << ','
+                << reserve_choices[i] << ',' << std::fixed << std::setprecision(8) << run.seconds
+                << ',' << std::setprecision(2) << rate << ',' << run.metrics.checksum << '\n';
+        }
+    }
+    if (raw) raw.flush();
+    for (std::size_t i=0; i<reserve_choices.size(); ++i) {
+        Metrics diagnostic_outcome;
+        const auto samples = profile_latency(events, reserve_choices[i], diagnostic_outcome);
+        if (diagnostic_outcome != reference)
+            throw std::runtime_error("diagnostic and throughput replay outcomes differ");
+        save_profile_latency(options, samples, reserve_choices[i], peak_live);
+        const auto rehashes = static_cast<std::size_t>(std::count_if(samples.begin(), samples.end(),
+            [](const ProfileSample& s){return s.rehash;}));
+        const auto removed = static_cast<std::size_t>(std::count_if(samples.begin(), samples.end(),
+            [](const ProfileSample& s){return s.cancel && s.removed_level;}));
+        auto& r = rates[i];
+        std::sort(r.begin(), r.end());
+        const double median = (r.size() % 2 == 1) ? r[r.size()/2]
+            : (r[r.size()/2-1] + r[r.size()/2]) / 2.0;
+        std::cout << "  reserve=" << reserve_choices[i] << " median=" << std::fixed
+                  << std::setprecision(0) << median << " ops/s"
+                  << " observed_index_rehashes=" << rehashes
+                  << " cancel_level_removals=" << removed << '\n';
+    }
+    std::cout << "Matching replay checksum: " << reference.checksum << '\n'
+              << "Profiles measure bucket growth and price-level removal, not all heap allocations.\n";
+    return 0;
+}
+
 int run(int argc, char** argv) {
     const Options options = parse_options(argc, argv);
-    const auto events = generate_events(options); // Excluded from all timings.
+    std::size_t peak_live = 0;
+    const auto events = generate_events(options, &peak_live); // Excluded from timings.
+    if (options.profile_grid) return run_profile(options, events, peak_live);
     std::vector<double> rates;
     std::vector<double> seconds;
     rates.reserve(options.repeats);
@@ -418,7 +616,7 @@ int run(int argc, char** argv) {
     const auto p99 = percentile(latency.nanoseconds, 99, 100);
     const auto p999 = percentile(latency.nanoseconds, 999, 1000);
 
-    std::cout << "ExchangeCore v0.6 - Performance Benchmarks\n"
+    std::cout << "ExchangeCore v0.7 - Performance Benchmarks\n"
               << "Preflight: " <<
 #ifdef EXCHANGECORE_LEGACY_PREFLIGHT
                  "legacy (v0.4)\n"

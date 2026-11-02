@@ -385,6 +385,47 @@ void reservation_does_not_cap_order_capacity() {
     require(book.best_bid()->total_quantity == 100, "order quantity consistent");
 }
 
+void diagnostic_book_stats_consistent() {
+    OrderBook book;
+    const auto empty = book.stats();
+    require(empty.live_orders == 0 && empty.bid_levels == 0 && empty.ask_levels == 0,
+            "empty diagnostic snapshot");
+    book.reserve_order_ids(80);
+    require(book.stats().id_buckets > 0, "reserve creates available buckets");
+    require(book.submit({1, Side::Buy, 100, 2}).status == SubmitStatus::Accepted,
+            "first bid");
+    require(book.submit({2, Side::Buy, 100, 3}).status == SubmitStatus::Accepted,
+            "second bid at same level");
+    require(book.submit({3, Side::Sell, 102, 2}).status == SubmitStatus::Accepted,
+            "ask level");
+    const auto populated = book.stats();
+    require(populated.live_orders == 3 && populated.bid_levels == 1 &&
+            populated.ask_levels == 1, "populated diagnostic snapshot");
+    require(populated.id_load_factor >= 0.0f, "nonnegative hash load");
+    require(book.cancel(1), "cancel first bid");
+    require(book.stats().bid_levels == 1 && book.stats().live_orders == 2,
+            "first cancellation retains shared price level");
+    require(book.cancel(2), "cancel final bid");
+    require(book.stats().bid_levels == 0 && book.stats().live_orders == 1,
+            "final cancellation removes price level");
+    require(book.submit({4, Side::Buy, 103, 2}).trades.size() == 1,
+            "trade consumes remaining ask");
+    require(book.stats().ask_levels == 0 && book.order_count() == 0,
+            "maker removal updates diagnostic snapshot");
+}
+
+void diagnostic_bucket_growth_matches_reservation() {
+    OrderBook book;
+    book.reserve_order_ids(100);
+    const auto starting_buckets = book.stats().id_buckets;
+    for (OrderId id = 1; id <= 75; ++id)
+        require(book.submit({id, Side::Buy, 100, 1}).status == SubmitStatus::Accepted,
+                "submit order under reserved capacity");
+    require(book.stats().id_buckets == starting_buckets,
+            "reserved hash capacity avoids growth under hint");
+    require(book.stats().live_orders == 75, "diagnostic count after growth");
+}
+
 struct TestCase { const char* name; void (*run)(); };
 } // namespace
 
@@ -424,6 +465,8 @@ int main() {
         {"reserve does not change matching", reserved_ids_preserve_matching_and_cancellation},
         {"sell overflow rejects atomically", overflow_on_sell_level_is_atomic},
         {"reserve is a hint", reservation_does_not_cap_order_capacity},
+        {"diagnostic snapshots", diagnostic_book_stats_consistent},
+        {"diagnostic reserved buckets", diagnostic_bucket_growth_matches_reservation},
     };
 
     std::size_t failures = 0;

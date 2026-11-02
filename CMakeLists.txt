@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(ExchangeCore VERSION 0.6 LANGUAGES CXX)
+project(ExchangeCore VERSION 0.7 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -51,4 +51,11 @@ if(BUILD_TESTING)
         add_test(NAME benchmark_smoke_${benchmark_workload}
             COMMAND exchangecore_bench --orders 1000 --repeats 1 --workload ${benchmark_workload} --seed 31)
     endforeach()
+endif()
+
+# Profiling smoke test verifies that interleaved configurations agree on replay outcomes.
+if(BUILD_TESTING)
+    add_test(NAME profile_smoke_grid
+        COMMAND exchangecore_bench --orders 2000 --workload mixed --seed 31
+                --profile-grid auto --profile-rounds 2)
 endif()

@@ -228,4 +228,9 @@ std::size_t OrderBook::order_count() const noexcept {
     return locations_.size();
 }
 
+BookStats OrderBook::stats() const noexcept {
+    return {locations_.size(), bids_.size(), asks_.size(),
+            locations_.bucket_count(), locations_.load_factor()};
+}
+
 } // namespace exchangecore
