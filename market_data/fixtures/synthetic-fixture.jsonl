@@ -1,0 +1,1 @@
+{"source":"kraken-spot-ws-v2","session":1,"received_at":"2026-11-02T13:19:49.645699+00:00","raw":"{\"channel\": \"book\", \"type\": \"snapshot\", \"data\": [{\"symbol\": \"BTC/USD\", \"bids\": [{\"price\": \"50000.0\", \"qty\": \"0.12500000\"}], \"asks\": [{\"price\": \"50000.1\", \"qty\": \"0.22000000\"}], \"checksum\": 4015227583}]}"}
