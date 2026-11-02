@@ -344,6 +344,47 @@ void trade_totals_match_executed_quantity() {
     require(book.best_ask()->total_quantity == 2, "remaining book quantity correct");
 }
 
+void reserved_ids_preserve_matching_and_cancellation() {
+    OrderBook book;
+    book.reserve_order_ids(10'000);
+    require(book.order_count() == 0, "reserve does not insert orders");
+    require(book.submit({1, Side::Sell, 101, 8}).status == SubmitStatus::Accepted,
+            "rest order with reserved index");
+    const auto result = book.submit({2, Side::Buy, 101, 3});
+    require(result.trades.size() == 1 && result.trades[0].quantity == 3,
+            "reserved index still matches");
+    require(book.best_ask()->total_quantity == 5, "reserved index partial maker");
+    require(book.cancel(1), "reserved index cancellation works");
+    require(book.submit({1, Side::Buy, 100, 4}).status == SubmitStatus::Accepted,
+            "reserved index allows reused id");
+    require(book.order_count() == 1, "reserved index final count");
+}
+
+void overflow_on_sell_level_is_atomic() {
+    OrderBook book;
+    const auto max = std::numeric_limits<Quantity>::max();
+    require(book.submit({1, Side::Sell, 110, max - 3}).status == SubmitStatus::Accepted,
+            "insert near-maximum ask");
+    require(book.submit({2, Side::Sell, 110, 3}).status == SubmitStatus::Accepted,
+            "fill capacity without overflow");
+    const auto result = book.submit({3, Side::Sell, 110, 1});
+    require(result.status == SubmitStatus::QuantityOverflow && result.trades.empty(),
+            "overflow must reject sell");
+    require(book.best_ask()->total_quantity == max && book.order_count() == 2,
+            "sell overflow leaves state unchanged");
+}
+
+void reservation_does_not_cap_order_capacity() {
+    OrderBook book;
+    book.reserve_order_ids(1);
+    for (OrderId id = 1; id <= 100; ++id) {
+        require(book.submit({id, Side::Buy, 100, 1}).status == SubmitStatus::Accepted,
+                "reserve is not a hard order limit");
+    }
+    require(book.order_count() == 100, "more orders than reserved capacity accepted");
+    require(book.best_bid()->total_quantity == 100, "order quantity consistent");
+}
+
 struct TestCase { const char* name; void (*run)(); };
 } // namespace
 
@@ -380,6 +421,9 @@ int main() {
         {"cancelled order cannot fill", cancelled_order_cannot_be_filled},
         {"max quantity fill", very_large_quantities_do_not_overflow_matching},
         {"conservation of quantity", trade_totals_match_executed_quantity},
+        {"reserve does not change matching", reserved_ids_preserve_matching_and_cancellation},
+        {"sell overflow rejects atomically", overflow_on_sell_level_is_atomic},
+        {"reserve is a hint", reservation_does_not_cap_order_capacity},
     };
 
     std::size_t failures = 0;

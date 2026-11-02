@@ -30,7 +30,9 @@ struct Options {
     std::uint64_t seed = 31;
     std::string workload = "mixed";
     unsigned repeats = 3;
+    std::size_t reserve_ids = 0;
     std::string csv;
+    std::string latency_csv;
 };
 
 // A small, fully specified PRNG avoids implementation-dependent distributions.
@@ -180,8 +182,9 @@ void apply_event(OrderBook& book, const Event& event, Metrics& metrics) {
 }
 
 struct ThroughputRun { double seconds; Metrics metrics; };
-ThroughputRun run_throughput(const std::vector<Event>& events) {
+ThroughputRun run_throughput(const std::vector<Event>& events, std::size_t reserve_ids) {
     OrderBook book;
+    if (reserve_ids != 0) book.reserve_order_ids(reserve_ids);
     Metrics metrics;
     const auto begin = Clock::now();
     for (const auto& event : events) apply_event(book, event, metrics);
@@ -191,8 +194,9 @@ ThroughputRun run_throughput(const std::vector<Event>& events) {
 }
 
 struct LatencyRun { std::vector<std::uint64_t> nanoseconds; Metrics metrics; };
-LatencyRun run_latency(const std::vector<Event>& events) {
+LatencyRun run_latency(const std::vector<Event>& events, std::size_t reserve_ids) {
     OrderBook book;
+    if (reserve_ids != 0) book.reserve_order_ids(reserve_ids);
     Metrics metrics;
     std::vector<std::uint64_t> samples;
     samples.reserve(events.size());
@@ -250,7 +254,8 @@ std::uint64_t parse_uint(std::string_view input, const char* flag) {
 
 void print_usage() {
     std::cout << "Usage: exchangecore_bench [--orders N] [--seed N] "
-                 "[--workload passive|crossing|mixed] [--repeats N] [--csv PATH]\n"
+                 "[--workload passive|crossing|mixed] [--repeats N] "
+                 "[--reserve-ids N] [--csv PATH] [--latency-csv PATH]\n"
                  "Defaults: --orders 100000 --seed 31 --workload mixed --repeats 3\n";
 }
 
@@ -269,8 +274,14 @@ Options parse_options(int argc, char** argv) {
                 throw std::runtime_error("--repeats must be between 1 and 10");
             options.repeats = static_cast<unsigned>(requested);
         }
+        else if (flag == "--reserve-ids") {
+            const auto count = parse_uint(value, "--reserve-ids");
+            if (count > 2'000'000) throw std::runtime_error("--reserve-ids must be <= 2000000");
+            options.reserve_ids = static_cast<std::size_t>(count);
+        }
         else if (flag == "--workload") options.workload = std::string(value);
         else if (flag == "--csv") options.csv = std::string(value);
+        else if (flag == "--latency-csv") options.latency_csv = std::string(value);
         else throw std::runtime_error("unknown argument " + std::string(flag));
     }
     if (options.orders == 0 || options.orders > 2'000'000)
@@ -306,7 +317,7 @@ void save_csv(const Options& options, const Metrics& m, double median_seconds,
     if (add_header)
         file << "compiler,build_type,workload,seed,operations,repeats,median_seconds,median_ops_per_sec,"
                 "mean_latency_ns,p50_ns,p95_ns,p99_ns,p999_ns,submitted,cancelled,trades,"
-                "units_executed,remaining_orders,checksum\n";
+                "units_executed,remaining_orders,checksum,preflight_mode,reserve_ids\n";
     file << compiler_name() << ',';
 #ifdef NDEBUG
     file << "Release";
@@ -318,8 +329,54 @@ void save_csv(const Options& options, const Metrics& m, double median_seconds,
          << median_seconds << ',' << std::setprecision(2) << median_throughput << ','
          << mean_ns << ',' << p50 << ',' << p95 << ',' << p99 << ',' << p999 << ','
          << m.submitted << ',' << m.cancelled << ',' << m.trades << ',' << m.units_executed
-         << ',' << m.remaining_orders << ',' << m.checksum << '\n';
+         << ',' << m.remaining_orders << ',' << m.checksum << ','
+#ifdef EXCHANGECORE_LEGACY_PREFLIGHT
+         << "legacy"
+#else
+         << "selective"
+#endif
+         << ',' << options.reserve_ids << '\n';
     if (!file) throw std::runtime_error("failed writing benchmark CSV");
+}
+
+// Diagnostic output only; throughput measurement remains unchanged.
+// Each decile is reported in chronological order rather than sorting the entire replay.
+// A separate cancel/submit split helps distinguish expensive operation types.
+void save_latency_diagnostics(const Options& options, const std::vector<Event>& events,
+                              const std::vector<std::uint64_t>& samples) {
+    if (options.latency_csv.empty()) return;
+    const std::filesystem::path path(options.latency_csv);
+    if (!path.parent_path().empty()) std::filesystem::create_directories(path.parent_path());
+    const bool header = !std::filesystem::exists(path) || std::filesystem::file_size(path) == 0;
+    std::ofstream out(path, std::ios::app);
+    if (!out) throw std::runtime_error("cannot open latency diagnostics CSV");
+    if (header) out << "workload,seed,operations,reserve_ids,decile,operation,count,mean_ns,p50_ns,p99_ns,p999_ns,max_ns,over_10us\n";
+    for (std::size_t decile = 0; decile < 10; ++decile) {
+        const std::size_t begin = events.size() * decile / 10;
+        const std::size_t end = events.size() * (decile + 1) / 10;
+        for (int kind = 0; kind < 3; ++kind) {
+            std::vector<std::uint64_t> group;
+            group.reserve(end - begin);
+            for (std::size_t i = begin; i < end; ++i) {
+                if (kind == 0 || (kind == 1 && !events[i].is_cancel) ||
+                    (kind == 2 && events[i].is_cancel)) group.push_back(samples[i]);
+            }
+            if (group.empty()) continue;
+            const auto expensive = static_cast<std::size_t>(std::count_if(
+                group.begin(), group.end(), [](std::uint64_t ns) { return ns > 10000; }));
+            const long double sum = std::accumulate(group.begin(), group.end(), 0.0L);
+            std::sort(group.begin(), group.end());
+            out << options.workload << ',' << options.seed << ',' << events.size() << ','
+                << options.reserve_ids << ',' << decile + 1 << ','
+                << (kind == 0 ? "all" : kind == 1 ? "submit" : "cancel") << ','
+                << group.size() << ',' << std::fixed << std::setprecision(2)
+                << static_cast<double>(sum / group.size()) << ','
+                << percentile(group, 50, 100) << ',' << percentile(group, 99, 100)
+                << ',' << percentile(group, 999, 1000) << ',' << group.back() << ','
+                << expensive << '\n';
+        }
+    }
+    if (!out) throw std::runtime_error("failed writing latency diagnostics CSV");
 }
 
 int run(int argc, char** argv) {
@@ -331,7 +388,7 @@ int run(int argc, char** argv) {
     seconds.reserve(options.repeats);
     Metrics reference;
     for (unsigned i = 0; i < options.repeats; ++i) {
-        const auto result = run_throughput(events);
+        const auto result = run_throughput(events, options.reserve_ids);
         if (i == 0) reference = result.metrics;
         else if (result.metrics != reference)
             throw std::runtime_error("throughput trials produced different outcomes");
@@ -348,9 +405,10 @@ int run(int argc, char** argv) {
     };
     const double median_rate = median(rates);
     const double median_seconds = median(seconds);
-    auto latency = run_latency(events);
+    auto latency = run_latency(events, options.reserve_ids);
     if (latency.metrics != reference)
         throw std::runtime_error("latency and throughput replay outcomes differ");
+    save_latency_diagnostics(options, events, latency.nanoseconds);
     std::sort(latency.nanoseconds.begin(), latency.nanoseconds.end());
     const long double total_ns = std::accumulate(latency.nanoseconds.begin(),
         latency.nanoseconds.end(), 0.0L);
@@ -360,7 +418,14 @@ int run(int argc, char** argv) {
     const auto p99 = percentile(latency.nanoseconds, 99, 100);
     const auto p999 = percentile(latency.nanoseconds, 999, 1000);
 
-    std::cout << "ExchangeCore v0.4 - Performance Benchmarks\n"
+    std::cout << "ExchangeCore v0.6 - Performance Benchmarks\n"
+              << "Preflight: " <<
+#ifdef EXCHANGECORE_LEGACY_PREFLIGHT
+                 "legacy (v0.4)\n"
+#else
+                 "selective (v0.5)\n"
+#endif
+              << "Order-ID reserve hint: " << options.reserve_ids << '\n'
               << "Compiler: " << compiler_name() << '\n'
               << "Build: " <<
 #ifdef NDEBUG
@@ -382,6 +447,8 @@ int run(int argc, char** argv) {
               << "Executed units: " << reference.units_executed
               << " | Remaining orders: " << reference.remaining_orders << '\n'
               << "Replay checksum: " << reference.checksum << '\n';
+    if (!options.latency_csv.empty())
+        std::cout << "Latency diagnostics CSV appended: " << options.latency_csv << '\n';
     if (!options.csv.empty()) {
         save_csv(options, reference, median_seconds, median_rate, mean_ns,
                  p50, p95, p99, p999);

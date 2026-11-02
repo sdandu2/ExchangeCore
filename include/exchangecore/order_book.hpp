@@ -48,6 +48,10 @@ struct LevelSummary {
 // New limit orders match immediately when marketable; unfilled quantity rests.
 class OrderBook {
 public:
+    // Optional performance hint. Does not limit order count or change matching behavior.
+    // Reserving order IDs can reduce hash-table rehashes during book growth.
+    void reserve_order_ids(std::size_t expected_live_orders);
+
     [[nodiscard]] Submission submit(const Order& order);
     [[nodiscard]] bool cancel(OrderId id);
     [[nodiscard]] std::optional<LevelSummary> best_bid() const;

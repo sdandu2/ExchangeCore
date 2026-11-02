@@ -1,4 +1,4 @@
-# v0.4 benchmark methodology
+# v0.5 benchmark methodology
 
 ## What is being measured?
 
@@ -51,3 +51,14 @@ Results are appended to `benchmarks/results/*.csv`, which Git ignores by default
 - Add warmup trials and more rigorous multi-run statistical summaries.
 - Benchmark allocation counts, memory use, and how cost varies with price-level depth.
 - Add realistic dataset replay, a reference model for property-based correctness tests, and performance regression checks with configurable, non-flaky thresholds.
+
+## v0.5 A/B controls
+
+- `--reserve-ids N` calls `OrderBook::reserve_order_ids(N)` **before** each timed replay. Default is 0 (no explicit reserve).
+- `-DEXCHANGECORE_LEGACY_PREFLIGHT=ON` builds with the original overflow preflight; default OFF enables selective preflight.
+- Both variants share the same event generation code and must produce matching replay checksums and counts. This is an **outcome check**, not a formal proof of semantic equivalence.
+- The `scripts/compare_v05.ps1` script builds both modes and runs the three workloads with matching seeds and parameters, storing results in `benchmarks/results/v0.5-comparison.csv`.
+- CSV v0.5 adds `preflight_mode` and `reserve_ids` columns. Do not append to an old v0.4 CSV with a different schema.
+- The reserve hint can reduce hash-table rehash frequency, but it cannot eliminate allocations for individual resting orders or guarantee lower p99.9 latency. The original passive tail may also reflect allocator activity, page faults, CPU scheduling, or timer effects.
+- Reservations happen *before* the timed replay; their setup time and memory footprint are not included in throughput. This reports steady-state throughput after preallocation, **not** total startup cost.
+- Fixed-order A/B runs can drift from thermal state and frequency scaling; repeat runs and reverse A/B order manually when making publishable claims.

@@ -15,6 +15,10 @@ bool is_crossing(const Order& incoming, PriceTicks resting_price) {
 
 } // namespace
 
+void OrderBook::reserve_order_ids(std::size_t expected_live_orders) {
+    locations_.reserve(expected_live_orders);
+}
+
 Quantity OrderBook::predicted_resting_quantity(const Order& order) const {
     Quantity remaining = order.quantity;
     if (order.side == Side::Buy) {
@@ -43,8 +47,14 @@ Submission OrderBook::submit(const Order& order) {
     if (order.quantity == 0) return rejected(SubmitStatus::InvalidQuantity);
     if (locations_.contains(order.id)) return rejected(SubmitStatus::DuplicateId);
 
-    // Preflight aggregate-quantity overflow *before* any matching occurs,
-    // ensuring invalid submissions never execute a partial transaction.
+    // Preflight aggregate-quantity overflow before executing any trade.
+    // A pre-existing same-side level can overflow if the incoming order rests.
+    // Usually its total fits with the entire incoming quantity; since any
+    // resting remainder is <= order.quantity, no opposite-book scan is needed.
+    // Only when an overflow is *possible* do we run the exact legacy scan.
+    // A build-time switch preserves the original validation algorithm for
+    // reproducible A/B benchmarking of this optimization.
+#ifdef EXCHANGECORE_LEGACY_PREFLIGHT
     const Quantity predicted_remaining = predicted_resting_quantity(order);
     if (predicted_remaining != 0) {
         if (order.side == Side::Buy) {
@@ -61,6 +71,26 @@ Submission OrderBook::submit(const Order& order) {
                 return rejected(SubmitStatus::QuantityOverflow);
         }
     }
+#else
+    const Quantity max_quantity = std::numeric_limits<Quantity>::max();
+    if (order.side == Side::Buy) {
+        const auto existing = bids_.find(order.price_ticks);
+        if (existing != bids_.end() &&
+            existing->second.total_quantity > max_quantity - order.quantity) {
+            const Quantity predicted_remaining = predicted_resting_quantity(order);
+            if (existing->second.total_quantity > max_quantity - predicted_remaining)
+                return rejected(SubmitStatus::QuantityOverflow);
+        }
+    } else {
+        const auto existing = asks_.find(order.price_ticks);
+        if (existing != asks_.end() &&
+            existing->second.total_quantity > max_quantity - order.quantity) {
+            const Quantity predicted_remaining = predicted_resting_quantity(order);
+            if (existing->second.total_quantity > max_quantity - predicted_remaining)
+                return rejected(SubmitStatus::QuantityOverflow);
+        }
+    }
+#endif
 
     Quantity remaining = order.quantity;
     std::vector<Trade> trades;
