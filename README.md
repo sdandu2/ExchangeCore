@@ -1,33 +1,107 @@
-# ExchangeCore v0.7 — Performance diagnostics
+# ExchangeCore v1.0 — C++ Matching Engine + Live Market Stream
 
-ExchangeCore is a **single-threaded, in-process C++20 limit order book and matching engine** using price-time priority. It supports limit orders, partial fills, multi-level matching, cancellations and reproducible test workloads.
+ExchangeCore combines a **C++20 simulated limit-order matching engine** with
+**read-only public Kraken spot market data**. The engine simulates price-time
+priority; it **does not** place real trades or recreate Kraken's actual order queue.
 
-## What's new in v0.7
+Our goal is a credible, testable, real-world engineering portfolio rather than a
+trading profit claim. The core has correctness tests and reproducible benchmarks;
+the Python adapter independently validates, records and streams market data.
 
-- `OrderBook::stats()`: constant-time read-only snapshot of active orders, price levels, ID-hash buckets and load factor.
-- Diagnostic latency replay classifies cancellations that remove a price level vs. those that do not, and identifies observable hash-table bucket-count changes.
-- Interleaved throughput experiment compares 0, **observed peak-live order count**, and full-operation-count reservation hints using exactly the same event stream.
-- Output includes per-round throughput, chronological decile latency distributions, and replay consistency checks.
-- Two added unit tests plus a profile smoke test. Existing `--reserve-ids`, `--csv`, `--latency-csv`, legacy preflight and v0.5 comparison scripts remain supported.
+## Quick start: Windows VS Code PowerShell
 
-**No performance improvement is claimed in v0.7.** This release adds observation and experiment tools to choose future optimizations. For methodology and limitations see [docs/profiling-v0.7.md](docs/profiling-v0.7.md).
-
-## Windows / VS Code / PowerShell
-
-Install the contents of the ZIP into `C:\Users\sammy\Projects\ExchangeCore` after saving your local work in Git. Prefer a dedicated `feature/v0.7-profiling` branch. Then:
+### 1) Compile and test the C++ engine
 
 ```powershell
-$env:Path = "C:\msys64\ucrt64\bin;$env:Path"
-cmake -S . -B build-gcc-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe" -DCMAKE_MAKE_PROGRAM="C:/msys64/ucrt64/bin/mingw32-make.exe"
+$env:Path = 'C:\msys64\ucrt64\bin;' + $env:Path
+cmake -S . -B build-gcc-release -G 'MinGW Makefiles' -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER='C:/msys64/ucrt64/bin/g++.exe' -DCMAKE_MAKE_PROGRAM='C:/msys64/ucrt64/bin/mingw32-make.exe'
 cmake --build build-gcc-release
 ctest --test-dir build-gcc-release --output-on-failure
-.\scripts\profile_v07.ps1 -BuildDir build-gcc-release -Orders 200000 -Seed 31 -Rounds 5
 ```
 
-If that succeeds, run again with `-Orders 1000000`. Each run writes six output CSVs under `benchmarks/results/` (ignored by Git). Share the six v0.7 files to plan the next targeted improvement.
+### 2) Install and verify the data adapter
 
-Earlier technical decisions: [docs/design.md](docs/design.md), [docs/benchmarking.md](docs/benchmarking.md), [docs/optimization-v0.5.md](docs/optimization-v0.5.md), and [docs/latency-v0.6.md](docs/latency-v0.6.md).
+```powershell
+py -m pip install -r market_data/requirements.txt
+py -m unittest discover -s market_data/tests -v
+```
 
-## Important benchmark disclaimer
+### 3) Start a real-time stream (Terminal 1)
 
-Throughput measures in-process `submit`/`cancel` operations, excluding event generation and reservation setup. Diagnostic latency timing is an independent, instrumented replay. Read-only snapshots may affect cache behavior. The project is not a production exchange or a low-latency networking stack.
+```powershell
+py -m market_data.stream_server --symbols BTC/USD ETH/USD --duration 300
+```
+
+**Public market data, no login or API key.** Your console will show:
+
+`LOCAL READ-ONLY STREAM: ws://127.0.0.1:8765`
+
+A timestamped JSONL recording is saved locally to `market_data/records/`.
+If the exchange is unreachable, use offline replay instead (see below).
+
+### 4) Connect a local viewer (Terminal 2)
+
+```powershell
+py -m market_data.watch --max-messages 30 --book-every 10
+```
+
+The viewer reports connection health and validated bid/ask levels from the
+same live feed. It cannot place real orders.
+
+### 5) Replay your own captured market recording
+
+```powershell
+py -m market_data.stream_server --replay "market_data/records/YOUR-EXACT-FILENAME.jsonl" --speed 1
+```
+
+Connect the watcher from a separate terminal as above. Recorded captures are
+ignored by Git and **not included in this ZIP**. For a built-in offline fixture,
+run:
+
+```powershell
+py -m market_data.stream_server --replay market_data/records/synthetic-fixture.jsonl --symbols BTC/USD --linger 30
+```
+
+The fixture is synthetic and is clearly labeled; your own `kraken-*.jsonl`
+recordings are real-feed captures from your machine.
+
+## Development milestones
+
+- **v0.1–0.3:** deterministic C++ matching and cancellation.
+- **v0.4–0.7:** throughput, tail-latency and memory profiling.
+- **v0.8:** configurable cancellation implementation and regression tests.
+- **v0.9:** public Kraken WebSocket collector, decimal-safe book, CRC32, JSONL replay.
+- **v1.0:** **local streaming API**, health/staleness, session resets, bounded fanout,
+  read-only clients, validated live feed, and timed replay.
+
+## Architecture and trust boundaries
+
+```text
+Kraken public WebSocket (spot L2 + trades)     Saved Kraken JSONL capture
+              |                                        |
+         CRC32 validation                 Decimal-safe CRC32 replay
+              |                                        |
+           recording                              validation
+              |_________________   ___________________|
+                                | |
+                       local WebSocket hub
+                     ws://127.0.0.1:8765
+                       (read-only, local)
+                                |
+                         CLI watcher
+                   (future: licensed dashboard)
+
+C++20 Matching Engine (separate: simulated orders and benchmark workloads)
+```
+
+The hub and recorder run outside the matching-engine benchmark path. **Matching
+latency benchmarks are not Kraken feed latency or end-to-end network latency.**
+
+Full details: [v1.0 streaming API](docs/live-stream-v1.0.md) ·
+[v0.9 market-data validation](docs/live-feed-v0.9.md) ·
+[matching design](docs/design.md) ·
+[benchmarking](docs/benchmarking.md).
+
+**Privacy and market-data licensing:** do not commit your captured JSONL files.
+The stream is intentionally bound only to localhost. Verify Kraken's API terms
+and obtain necessary permission before publicly redistributing real exchange data.

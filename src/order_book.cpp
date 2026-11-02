@@ -115,7 +115,7 @@ void OrderBook::rest(const Order& order) {
         level.orders.push_back(order);
         auto order_it = std::prev(level.orders.end());
         level.total_quantity += order.quantity;
-        locations_.emplace(order.id, Location{order.side, order.price_ticks, order_it});
+        locations_.emplace(order.id, Location{order.side, order.price_ticks, order_it, &level});
     } else {
         auto [level_it, inserted] = asks_.try_emplace(order.price_ticks);
         (void)inserted;
@@ -123,7 +123,7 @@ void OrderBook::rest(const Order& order) {
         level.orders.push_back(order);
         auto order_it = std::prev(level.orders.end());
         level.total_quantity += order.quantity;
-        locations_.emplace(order.id, Location{order.side, order.price_ticks, order_it});
+        locations_.emplace(order.id, Location{order.side, order.price_ticks, order_it, &level});
     }
 }
 
@@ -176,6 +176,8 @@ bool OrderBook::cancel(OrderId id) {
     if (location_it == locations_.end()) return false;
 
     const Location location = location_it->second;
+#ifdef EXCHANGECORE_LEGACY_CANCEL
+    // v0.7 baseline: look up a price level in the tree on every cancellation.
     if (location.side == Side::Buy) {
         auto level_it = bids_.find(location.price_ticks);
         auto& level = level_it->second;
@@ -189,6 +191,21 @@ bool OrderBook::cancel(OrderId id) {
         level.orders.erase(location.order_it);
         if (level.orders.empty()) asks_.erase(level_it);
     }
+#else
+    // v0.8: price levels live in std::map nodes, whose addresses remain stable
+    // until the node is removed. All locations on a removed level have already
+    // been erased by fills or this final cancellation, so pointers never outlive
+    // their price-level nodes during the book's lifetime.
+    PriceLevel& level = *location.level_ptr;
+    level.total_quantity -= location.order_it->quantity;
+    level.orders.erase(location.order_it);
+    if (level.orders.empty()) {
+        // Last order at the level: remove the map node once. All other
+        // cancellations avoid the tree lookup entirely.
+        if (location.side == Side::Buy) bids_.erase(location.price_ticks);
+        else asks_.erase(location.price_ticks);
+    }
+#endif
 
     locations_.erase(location_it);
     return true;

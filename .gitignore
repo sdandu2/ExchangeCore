@@ -19,3 +19,9 @@ Thumbs.db
 
 # Local benchmark outputs (recreate from documented commands)
 benchmarks/results/*.csv
+
+# Live feed recordings and local Python environment
+market_data/records/
+__pycache__/
+*.pyc
+.venv/

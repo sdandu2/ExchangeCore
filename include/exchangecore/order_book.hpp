@@ -80,6 +80,7 @@ private:
         Side side;
         PriceTicks price_ticks;
         std::list<Order>::iterator order_it;
+        PriceLevel* level_ptr; // map node address stable while level has live orders.
     };
 
     std::map<PriceTicks, PriceLevel, std::greater<PriceTicks>> bids_;

@@ -123,14 +123,16 @@ std::vector<Event> generate_events(const Options& options, std::size_t* peak_liv
 
     for (std::size_t i = 0; i < options.orders; ++i) {
         const std::uint64_t roll = rng.below(100);
-        if (options.workload == "mixed" && roll < 15 && !live.empty()) {
+        if ((options.workload == "mixed" || options.workload == "cancel-heavy") &&
+            roll < (options.workload == "mixed" ? 15U : 45U) && !live.empty()) {
             const OrderId id = live.random_id(rng);
             if (!reference.cancel(id)) throw std::runtime_error("generator cancel failed");
             live.remove(id);
             events.push_back(Event{true, {}, id});
         } else {
             const bool aggressive = options.workload == "crossing" ||
-                (options.workload == "mixed" && roll < 60);
+                (options.workload == "mixed" && roll < 60) ||
+                (options.workload == "cancel-heavy" && roll < 55);
             const Order order = make_order(next_id++, aggressive, rng, reference);
             const Submission result = reference.submit(order);
             if (result.status != SubmitStatus::Accepted ||
@@ -259,7 +261,7 @@ std::uint64_t parse_uint(std::string_view input, const char* flag) {
 
 void print_usage() {
     std::cout << "Usage: exchangecore_bench [--orders N] [--seed N] "
-                 "[--workload passive|crossing|mixed] [--repeats N] "
+                 "[--workload passive|crossing|mixed|cancel-heavy] [--repeats N] "
                  "[--reserve-ids N] [--csv PATH] [--latency-csv PATH]\n"
                  "  Profiling: [--profile-grid auto] [--profile-rounds N] "
                  "[--profile-csv PATH] [--profile-latency-csv PATH]\n"
@@ -306,8 +308,8 @@ Options parse_options(int argc, char** argv) {
         throw std::runtime_error("--orders must be between 1 and 2000000");
     if (options.repeats < 1 || options.repeats > 10)
         throw std::runtime_error("--repeats must be between 1 and 10");
-    if (options.workload != "passive" && options.workload != "crossing" && options.workload != "mixed")
-        throw std::runtime_error("--workload must be passive, crossing, or mixed");
+    if (options.workload != "passive" && options.workload != "crossing" && options.workload != "mixed" && options.workload != "cancel-heavy")
+        throw std::runtime_error("--workload must be passive, crossing, mixed, or cancel-heavy");
     return options;
 }
 
@@ -335,7 +337,7 @@ void save_csv(const Options& options, const Metrics& m, double median_seconds,
     if (add_header)
         file << "compiler,build_type,workload,seed,operations,repeats,median_seconds,median_ops_per_sec,"
                 "mean_latency_ns,p50_ns,p95_ns,p99_ns,p999_ns,submitted,cancelled,trades,"
-                "units_executed,remaining_orders,checksum,preflight_mode,reserve_ids\n";
+                "units_executed,remaining_orders,checksum,preflight_mode,reserve_ids,cancel_mode\n";
     file << compiler_name() << ',';
 #ifdef NDEBUG
     file << "Release";
@@ -353,7 +355,13 @@ void save_csv(const Options& options, const Metrics& m, double median_seconds,
 #else
          << "selective"
 #endif
-         << ',' << options.reserve_ids << '\n';
+         << ',' << options.reserve_ids << ','
+#ifdef EXCHANGECORE_LEGACY_CANCEL
+         << "legacy"
+#else
+         << "cached-level"
+#endif
+         << '\n';
     if (!file) throw std::runtime_error("failed writing benchmark CSV");
 }
 
@@ -526,7 +534,7 @@ int run_profile(const Options& options, const std::vector<Event>& events, std::s
     }
     Metrics reference;
     bool have_reference = false;
-    std::cout << "ExchangeCore v0.7 - interleaved capacity experiment\n"
+    std::cout << "ExchangeCore v0.8 - interleaved capacity experiment\n"
               << "Workload: " << options.workload << " | Seed: " << options.seed
               << " | Operations: " << events.size() << " | Peak live orders: " << peak_live
               << " | Rounds: " << options.profile_rounds << '\n';
@@ -616,14 +624,20 @@ int run(int argc, char** argv) {
     const auto p99 = percentile(latency.nanoseconds, 99, 100);
     const auto p999 = percentile(latency.nanoseconds, 999, 1000);
 
-    std::cout << "ExchangeCore v0.7 - Performance Benchmarks\n"
+    std::cout << "ExchangeCore v0.8 - Performance Benchmarks\n"
               << "Preflight: " <<
 #ifdef EXCHANGECORE_LEGACY_PREFLIGHT
                  "legacy (v0.4)\n"
 #else
                  "selective (v0.5)\n"
 #endif
-              << "Order-ID reserve hint: " << options.reserve_ids << '\n'
+              << "Cancel path: " <<
+#ifdef EXCHANGECORE_LEGACY_CANCEL
+                 "legacy tree lookup\n"
+#else
+                 "cached level pointer\n"
+#endif
+              << "Order-ID reserve hint: " << options.reserve_ids << '\n' 
               << "Compiler: " << compiler_name() << '\n'
               << "Build: " <<
 #ifdef NDEBUG

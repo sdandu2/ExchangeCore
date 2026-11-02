@@ -426,6 +426,67 @@ void diagnostic_bucket_growth_matches_reservation() {
     require(book.stats().live_orders == 75, "diagnostic count after growth");
 }
 
+// Cancel-path regression: pointers to levels must remain valid as other
+// std::map nodes are inserted/erased and unordered_map rehashes occur.
+void cancel_after_level_and_index_growth() {
+    OrderBook book;
+    for (OrderId id = 1; id <= 250; ++id) {
+        const PriceTicks price = 1000 + static_cast<PriceTicks>(id % 73);
+        require(book.submit({id, Side::Buy, price, 2}).status == SubmitStatus::Accepted,
+                "insert many bid levels");
+    }
+    require(book.order_count() == 250, "all resting IDs accounted");
+    for (OrderId id = 1; id <= 250; id += 2)
+        require(book.cancel(id), "cancel after many map inserts and hash rehashes");
+    for (OrderId id = 2; id <= 250; id += 2)
+        require(book.cancel(id), "remove remaining ID and possibly last price level");
+    require(book.order_count() == 0 && !book.best_bid(), "all bid levels cleared");
+}
+
+void cancel_reused_id_at_different_level_and_side() {
+    OrderBook book;
+    require(book.submit({42, Side::Buy, 100, 3}).status == SubmitStatus::Accepted,
+            "insert original bid");
+    require(book.cancel(42), "cancel original bid");
+    require(book.submit({42, Side::Sell, 200, 4}).status == SubmitStatus::Accepted,
+            "reuse ID on ask side");
+    require(book.submit({43, Side::Sell, 200, 6}).status == SubmitStatus::Accepted,
+            "same-level ask");
+    require(book.cancel(42), "cancel reused ID without removing shared ask level");
+    require(book.best_ask() && book.best_ask()->total_quantity == 6,
+            "remaining ask unchanged");
+    require(book.cancel(43), "final ask removed");
+    require(!book.best_ask() && book.order_count() == 0, "empty book");
+}
+
+void cancel_other_order_after_partial_and_full_fills() {
+    OrderBook book;
+    (void)book.submit({1, Side::Sell, 101, 8});
+    (void)book.submit({2, Side::Sell, 101, 10});
+    (void)book.submit({3, Side::Sell, 102, 3});
+    const auto result = book.submit({4, Side::Buy, 101, 12});
+    require(result.executed_quantity == 12, "partial crossing execution");
+    require(book.cancel(3), "cancel order on independent price level");
+    require(book.cancel(2), "cancel partially filled maker");
+    require(book.order_count() == 0 && !book.best_ask(), "no dangling locations");
+}
+
+void cancel_mixed_sides_and_empty_levels() {
+    OrderBook book;
+    for (OrderId id = 1; id <= 100; ++id) {
+        const Side side = id % 2 == 0 ? Side::Buy : Side::Sell;
+        const PriceTicks price = side == Side::Buy ? 900 + static_cast<PriceTicks>(id % 10)
+                                                    : 1100 + static_cast<PriceTicks>(id % 10);
+        require(book.submit({id, side, price, 1}).status == SubmitStatus::Accepted,
+                "rest mixed side order");
+    }
+    for (OrderId id = 100; id > 0; --id)
+        require(book.cancel(id), "cancel reverse arrival order");
+    require(book.stats().bid_levels == 0 && book.stats().ask_levels == 0,
+            "all price levels cleared");
+    require(book.order_count() == 0, "all id locations cleared");
+}
+
 struct TestCase { const char* name; void (*run)(); };
 } // namespace
 
@@ -467,6 +528,10 @@ int main() {
         {"reserve is a hint", reservation_does_not_cap_order_capacity},
         {"diagnostic snapshots", diagnostic_book_stats_consistent},
         {"diagnostic reserved buckets", diagnostic_bucket_growth_matches_reservation},
+        {"cancel after growth and rehash", cancel_after_level_and_index_growth},
+        {"cancel reused id at opposite side", cancel_reused_id_at_different_level_and_side},
+        {"cancel after maker fills", cancel_other_order_after_partial_and_full_fills},
+        {"cancel mixed sides reverse order", cancel_mixed_sides_and_empty_levels},
     };
 
     std::size_t failures = 0;
