@@ -1,3 +1,4 @@
+
 name: C++ build and tests
 
 on:
@@ -12,34 +13,50 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+
     steps:
       - uses: actions/checkout@v4
-      - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-      - name: Build
-        run: cmake --build build --config Release --parallel 2
-      - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
 
       - name: Install WebSocket dependency
         run: python -m pip install -r market_data/requirements.txt
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
       - name: Python offline market stream tests
         run: python -m unittest discover -s market_data/tests -v
 
   dashboard-build:
     name: React dashboard (Node 22)
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
+
       - name: Install dashboard dependencies
         working-directory: dashboard
-        run: npm install
+        run: npm ci
+
       - name: Build and typecheck
         working-directory: dashboard
         run: npm run build
+
       - name: Unit tests
         working-directory: dashboard
         run: npm run test:unit
