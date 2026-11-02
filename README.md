@@ -1,98 +1,106 @@
 # ExchangeCore
 
-A C++20 portfolio project building a single-threaded limit order book and price-time priority matching engine. The project is developed incrementally with tests before performance optimization.
+**v0.4 — a C++20 limit-order matching engine with reproducible performance benchmarks.**
 
-## Status: v0.3 — Limit order matching
+Single-threaded, in-memory exchange simulator. Emphasizes correctness and measured engineering rather than unsupported "low-latency" claims. No brokerage connectivity and no real-money trading.
 
-- Integer price ticks and integer quantities (no floating-point order prices)
-- Bids sorted high-to-low, asks sorted low-to-high; FIFO within each price level
-- Marketable incoming limit orders execute against resting liquidity at **maker price**
-- Partial fills, multi-level sweeps, unfilled residuals resting at their limit price
-- Trade reports with maker ID, taker ID, executed price, and quantity
-- Order cancellation; nonzero order ID and positive price/quantity checks
-- Duplicate active IDs and per-level quantity overflow rejected before matching
-- Automated scenario tests using CTest; builds with MSVC or modern MinGW/GCC
+## What's implemented
 
-**Not yet implemented:** stop/market orders, multi-symbol routing, persistent global order-ID uniqueness, network protocol, durable event log, concurrency, benchmarks, or web dashboard. Do not claim low-latency performance without an explicitly measured benchmark.
+- Price-time-priority FIFO limit-order matching using integer price ticks
+- Partial fills, multi-level sweeps, maker-price executions, cancellations
+- Quantity conservation, active ID validation, overflow checks
+- 31 internal matching-engine correctness cases (one CTest executable)
+- Three additional CTest benchmark smoke tests (`passive`, `crossing`, `mixed`)
+- GitHub Actions CI building/testing on Windows and Linux
+- Configurable benchmark: seed, operation count, workload, repeat count, CSV output
+- Separate bulk-throughput and per-operation-latency passes; replay digest cross-check
+
+## Project structure
+
+```text
+ExchangeCore/
+├── include/exchangecore/         C++ public types and order-book API
+├── src/                          Matching engine and console demo
+├── tests/                        Correctness tests
+├── benchmarks/matching_bench.cpp Deterministic workload / measurement CLI
+├── benchmarks/results/           Local CSV measurements (ignored by Git)
+├── scripts/run_benchmarks.ps1     Run all three workloads from VS Code
+├── docs/design.md                Engine behavior and design limitations
+├── docs/benchmarking.md          Benchmarking methodology and caveats
+├── .github/workflows/ci.yml      CI for MSVC/Windows and GCC/Linux
+├── CMakeLists.txt
+├── .gitattributes
+└── .gitignore
+```
 
 ## Requirements
 
-- CMake 3.20+
-- A C++20 compiler (MSVC from Visual Studio or current MSYS2 UCRT64 GCC)
+- CMake >= 3.20
+- C++20 compiler: MSVC, modern GCC (MSYS2 UCRT64 on Windows), or Clang
+- Visual Studio Code + PowerShell recommended for Windows
 
-## Build / test in VS Code PowerShell
+## Windows setup: build and test with MSYS2 GCC (Release)
 
-### Existing MSVC + NMake build (`build/`)
-
-Use your working PowerShell developer environment:
-
-```powershell
-cmake --build build
-ctest --test-dir build --output-on-failure
-.\build\exchangecore.exe
-```
-
-### MSYS2 UCRT64 GCC (`build-gcc/`)
-
-If the compiler isn't already on PATH, add it temporarily:
+Use VS Code **PowerShell** in your `ExchangeCore` directory. Use a **new Release build directory** to avoid timing Debug binaries:
 
 ```powershell
 $env:Path = "C:\msys64\ucrt64\bin;$env:Path"
+cmake -S . -B build-gcc-release -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe" -DCMAKE_MAKE_PROGRAM="C:/msys64/ucrt64/bin/mingw32-make.exe"
+cmake --build build-gcc-release
+ctest --test-dir build-gcc-release --output-on-failure
+.\build-gcc-release\exchangecore.exe
 ```
 
-If `build-gcc` already has a successful CMake configuration:
+To run **all three** benchmark workloads and save one CSV:
 
 ```powershell
-cmake --build build-gcc
-ctest --test-dir build-gcc --output-on-failure
-.\build-gcc\exchangecore.exe
+.\scripts\run_benchmarks.ps1 -BuildDir build-gcc-release -Orders 100000 -Seed 31 -Repeats 3
 ```
 
-If you need to configure GCC from scratch instead:
+If script execution is restricted, run the binary directly:
 
 ```powershell
-cmake -S . -B build-gcc -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER="C:/msys64/ucrt64/bin/g++.exe" -DCMAKE_MAKE_PROGRAM="C:/msys64/ucrt64/bin/mingw32-make.exe"
-cmake --build build-gcc
+.\build-gcc-release\exchangecore_bench.exe --orders 100000 --seed 31 --workload mixed --repeats 3 --csv benchmarks/results/v0.4.csv
 ```
 
-Keep separate build directories for the different compiler/toolchain combinations.
+Run the other workloads by substituting `passive` and `crossing` for `mixed`.
 
-### Expected demo output
+### MSVC build
+
+Keep your working `build/` MSVC/NMake configuration for correctness testing. For meaningful MSVC performance measurements, configure a **separate Release build** in a terminal where `cl` and `nmake` are available:
+
+```powershell
+cmake -S . -B build-msvc-release -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build-msvc-release
+ctest --test-dir build-msvc-release --output-on-failure
+.\build-msvc-release\exchangecore_bench.exe --workload mixed --orders 100000 --repeats 3 --seed 31 --csv benchmarks/results/v0.4-msvc.csv
+```
+
+For a regular MSVC Debug build, run `cmake --build build` and `ctest --test-dir build --output-on-failure`.
+
+## Benchmark interface
 
 ```text
-ExchangeCore v0.3 - Price-Time Priority Matching
-Trade: maker=1 taker=3 qty=50 price=10100 ticks
-Trade: maker=2 taker=3 qty=20 price=10200 ticks
-Executed quantity: 70
-Remaining resting orders: 1
-Best ask: 10200 ticks, 10 units
+exchangecore_bench [--orders N] [--seed N]
+                   [--workload passive|crossing|mixed]
+                   [--repeats N] [--csv PATH]
 ```
 
-## API (v0.3)
+Defaults: **100,000 operations**, **seed 31**, **mixed** workload, **3 repeats**.
 
-```cpp
-OrderBook book;
-Submission r = book.submit({1, Side::Sell, 100, 10});
-Submission s = book.submit({2, Side::Buy, 101, 4});
-// s.status == SubmitStatus::Accepted
-// s.executed_quantity == 4
-// s.resting_quantity == 0
-// s.trades[0] == {maker_id=1, taker_id=2, price_ticks=100, quantity=4}
-```
+- `passive`: mostly non-crossing submissions; stresses accumulating resting orders
+- `crossing`: deliberately marketable submissions when opposite liquidity exists
+- `mixed`: passive and aggressive submissions plus valid cancellations (roughly 15% when orders exist)
 
-`submit` replaces the old passive-only `add` API. A marketable order **executes** rather than returning `WouldCross`.
+The CLI reports **operations per second** (submissions plus cancellations), latency mean and nearest-rank p50/p95/p99/p99.9, trade count, executed quantity, remaining orders, and a replay checksum. The CSV stores one row per invocation; repeated commands append more rows.
 
-## Project layout
+See [docs/benchmarking.md](docs/benchmarking.md) for important interpretation notes. **Do not use the example numbers from someone else's hardware as your own.**
 
-- `include/exchangecore/` — order, trade, and order book public types
-- `src/` — C++ matching engine implementation and CLI demo
-- `tests/` — automated correctness scenarios (no additional testing dependencies)
-- `docs/` — design notes and invariants
-- `benchmarks/` — performance benchmarks planned for v0.4
+## Current limitations / next steps
 
-## Next steps
+- Single-threaded, single-book simulator, no network round trips, persistence, or production exchange fault-tolerance
+- Latency samples include high-resolution timer overhead and are subject to OS scheduling noise
+- Benchmark workload is synthetic, not a calibrated exchange feed
+- No assertion that performance is "HFT-grade" or faster than commercial matching engines
 
-- v0.4: randomized/model-based tests, sanitizer runs, benchmark harness with reproducible workload generation
-- v0.5+: event log/replay, API server, dashboard, performance profiling
-
-See [docs/design.md](docs/design.md).
+Next: v0.5 event logging and replay, then production-style APIs, observability, and UI.

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(ExchangeCore VERSION 0.3 LANGUAGES CXX)
+project(ExchangeCore VERSION 0.4 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -28,4 +28,20 @@ if(BUILD_TESTING)
     add_executable(exchangecore_tests tests/order_book_tests.cpp)
     target_link_libraries(exchangecore_tests PRIVATE exchangecore_core)
     add_test(NAME order_book_tests COMMAND exchangecore_tests)
+endif()
+
+# Dedicated benchmark executable: not mixed with the application demo or unit tests.
+add_executable(exchangecore_bench benchmarks/matching_bench.cpp)
+target_link_libraries(exchangecore_bench PRIVATE exchangecore_core)
+if(MSVC)
+    target_compile_options(exchangecore_bench PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(exchangecore_bench PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+if(BUILD_TESTING)
+    foreach(benchmark_workload IN ITEMS passive crossing mixed)
+        add_test(NAME benchmark_smoke_${benchmark_workload}
+            COMMAND exchangecore_bench --orders 1000 --repeats 1 --workload ${benchmark_workload} --seed 31)
+    endforeach()
 endif()

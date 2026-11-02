@@ -1,8 +1,21 @@
+# Generated build trees (MSVC and GCC)
 build/
-build-gcc/
-build-mingw/
+build-*/
 .vs/
+.vscode/*.log
+
+# Compiled artifacts
 *.obj
+*.o
 *.exe
 *.pdb
 *.ilk
+*.a
+*.lib
+
+# Local system files
+.DS_Store
+Thumbs.db
+
+# Local benchmark outputs (recreate from documented commands)
+benchmarks/results/*.csv

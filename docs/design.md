@@ -55,3 +55,7 @@ The data structures prioritize clarity/correctness over low latency. Later versi
 ## Testing
 
 The test binary verifies the original passive order book behavior where still relevant, plus exact-price, FIFO, partial, sweep, cancellation, limit, overflow, duplicate, and quantity-conservation cases. CTest registers the test binary as one executable, and the binary prints the count of internal cases.
+
+## v0.4 — Performance harness
+
+The core order-book API and matching semantics are unchanged. `exchangecore_bench` is a separate executable, linked against the same `exchangecore_core` library as the demo and tests. It generates input outside measured regions, validates event outcomes through deterministic replay, and reports both bulk throughput and individually sampled latency. See [benchmarking.md](benchmarking.md) for measurement methodology, workload mix, and limitations.
