@@ -25,3 +25,8 @@ market_data/records/
 __pycache__/
 *.pyc
 .venv/
+
+# Frontend build and npm dependencies
+dashboard/node_modules/
+dashboard/dist/
+dashboard/*.tsbuildinfo

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import json
 import time
+from websockets.exceptions import ConnectionClosed
 
 SCHEMA = 'exchangecore.market.v1'
 SOURCE = 'kraken-spot-ws-v2'
@@ -58,14 +59,15 @@ class MarketHub:
         self.trades = 0
         self.slow_clients = 0
         self.clients = {}  # websocket -> bounded queue of serialized JSON
+        self.replay_controller = None
 
     def status(self):
         ages = {symbol: round((time.monotonic() - at) * 1000, 1)
                 for symbol, at in self.last_book_at.items()}
         ready = set(self.books) == set(self.symbols)
-        running = self.phase in ('connected', 'replaying')
+        running = self.phase in ('connected', 'replaying', 'paused')
         stale_symbols = sorted(symbol for symbol, ms in ages.items()
-                               if ms > self.stale_seconds * 1000) if running else []
+                               if ms > self.stale_seconds * 1000) if running and self.phase != 'paused' else []
         stale = bool(stale_symbols)
         return {'schema': SCHEMA, 'type': 'status', 'mode': self.mode, 'source': SOURCE,
                 'phase': self.phase, 'session': self.session, 'at': utc_now(),
@@ -90,7 +92,7 @@ class MarketHub:
 
     def change_phase(self, phase, session, reason=None):
         if phase not in ('starting', 'connecting', 'connected', 'reconnecting',
-                         'replaying', 'finished', 'error'):
+                         'replaying', 'paused', 'finished', 'error'):
             raise ValueError('Unknown stream phase')
         if session != self.session or phase in ('connecting', 'reconnecting'):
             self.books.clear()  # do not retain stale bids/asks after a lost connection
@@ -140,6 +142,8 @@ class MarketHub:
                                      'read_only': True, 'source': SOURCE, 'mode': self.mode}))
         if not queue.full():
             queue.put_nowait(json.dumps(self.status()))
+        if self.replay_controller is not None and not queue.full():
+            queue.put_nowait(json.dumps(self.replay_controller.info()))
         # On a connection, the latest validated full depth replaces missed deltas.
         for book in self.books.values():
             if queue.full():
@@ -149,9 +153,20 @@ class MarketHub:
             queue.put_nowait(json.dumps(book))
         sender = asyncio.create_task(self._sender(ws, queue))
         try:
-            async for _ in ws:
-                await ws.close(code=1008, reason='Read-only feed; client messages disallowed')
-                break
+            async for raw in ws:
+                if self.mode != 'replay' or self.replay_controller is None:
+                    await ws.close(code=1008, reason='Read-only feed; client messages disallowed')
+                    break
+                try:
+                    if not isinstance(raw, str) or len(raw) > 256:
+                        raise ValueError('Invalid control message')
+                    await self.replay_controller.command(json.loads(raw))
+                except (ValueError, TypeError, json.JSONDecodeError):
+                    await ws.close(code=1008, reason='Invalid replay control')
+                    break
+        except ConnectionClosed:
+            # Browser refresh/closed tab often skips the close handshake.
+            pass
         finally:
             self.clients.pop(ws, None)
             sender.cancel()

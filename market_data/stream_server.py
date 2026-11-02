@@ -9,6 +9,7 @@ from .book import FeedError
 from .collector import collect, ENDPOINT, SubscriptionRejected
 from .recording import Session, parse
 from .stream import MarketHub
+from .playback import ReplayPlayer, load_recording
 
 HOST = '127.0.0.1'  # Never publicly bind unlicensed exchange data / unauthenticated API.
 
@@ -68,15 +69,18 @@ async def run(args):
     mode = 'replay' if args.replay else 'live'
     hub = MarketHub(args.symbols, args.depth, mode, args.stale_seconds,
                     queue_limit=args.queue_limit, max_clients=args.max_clients)
-    async with serve(hub.handle, HOST, args.port, max_size=4096, max_queue=4) as server:
+    async with serve(hub.handle, HOST, args.port, max_size=4096, max_queue=4,
+                     origins=[None, 'http://127.0.0.1:5173', 'http://localhost:5173']) as server:
         actual_port = server.sockets[0].getsockname()[1]
         print(f'LOCAL READ-ONLY STREAM: ws://{HOST}:{actual_port}', flush=True)
         print(f'Mode: {mode} | Symbols: {", ".join(args.symbols)} | Depth: {args.depth}', flush=True)
         heartbeat = asyncio.create_task(hub.heartbeat())
         try:
             if args.replay:
-                count = await stream_replay(args.replay, args.symbols, args.depth, hub, args.speed)
-                print(f'Replay completed: {count} validated market messages', flush=True)
+                records = load_recording(args.replay, args.symbols, args.depth)
+                player = ReplayPlayer(records, hub, args.symbols, args.depth, args.speed)
+                print(f'Interactive replay ready: {len(records)} validated events; playback controls available locally', flush=True)
+                await player.run()  # Remains available for pause, seek, replay after completion.
             else:
                 output = args.output or Path('market_data/records')/(
                     'kraken-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ') + '.jsonl')
@@ -112,7 +116,7 @@ def main():
     parser.add_argument('--depth', type=int, choices=[10,25,100,500,1000], default=10)
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--duration', type=float, default=300, help='Live collection seconds')
-    parser.add_argument('--speed', type=float, default=1, help='Replay speed multiplier')
+    parser.add_argument('--speed', type=float, default=1, choices=ReplayPlayer.SPEEDS, help='Replay speed multiplier')
     parser.add_argument('--linger', type=float, default=15, help='Keep socket open after done')
     parser.add_argument('--stale-seconds', type=float, default=15)
     parser.add_argument('--queue-limit', type=int, default=256)

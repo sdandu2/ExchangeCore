@@ -1,4 +1,4 @@
-# ExchangeCore v1.0 — C++ Matching Engine + Live Market Stream
+# ExchangeCore v1.2 — C++ Matching Engine + Live Market Terminal
 
 ExchangeCore combines a **C++20 simulated limit-order matching engine** with
 **read-only public Kraken spot market data**. The engine simulates price-time
@@ -65,6 +65,32 @@ py -m market_data.stream_server --replay market_data/records/synthetic-fixture.j
 The fixture is synthetic and is clearly labeled; your own `kraken-*.jsonl`
 recordings are real-feed captures from your machine.
 
+## v1.2 historical replay and UX fixes
+
+The market-data server now supports replay-only pause/resume, speed, and seek-to-event-position controls. Recorded books are reconstructed from checksum-validated events and the frontend displays source timestamps on a time-proportional chart. The live mode remains read-only. Order-book VALUE (USD), locally paused trade tape, and graceful disconnect handling are included.
+
+See [historical replay guide](docs/replay-v1.2.md).
+
+## Real-time dashboard (v1.1)
+
+The `dashboard/` folder contains a read-only React + TypeScript interface for
+verified Kraken Level 2 data, mid-price observations, depth, trade tape and feed
+health. Start `market_data.stream_server` first (as above), then in a **second**
+PowerShell terminal:
+
+```powershell
+cd dashboard
+node --version
+npm install
+npm run dev
+```
+
+Open **http://127.0.0.1:5173**. Node.js 22 LTS is recommended; Vite requires
+Node 20.19+ or 22.12+. See [dashboard instructions](dashboard/README.md).
+
+The viewer is strictly localhost-only. It does not send orders and must not be
+exposed publicly without appropriate provider permissions and security controls.
+
 ## Development milestones
 
 - **v0.1–0.3:** deterministic C++ matching and cancellation.
@@ -73,6 +99,8 @@ recordings are real-feed captures from your machine.
 - **v0.9:** public Kraken WebSocket collector, decimal-safe book, CRC32, JSONL replay.
 - **v1.0:** **local streaming API**, health/staleness, session resets, bounded fanout,
   read-only clients, validated live feed, and timed replay.
+- **v1.2:** interactive replay and timestamp-aware chart; **v1.1:** React + TypeScript local live-market terminal with verified L2 book,
+  trade tape, observed mid-price and feed health.
 
 ## Architecture and trust boundaries
 
@@ -88,8 +116,7 @@ Kraken public WebSocket (spot L2 + trades)     Saved Kraken JSONL capture
                      ws://127.0.0.1:8765
                        (read-only, local)
                                 |
-                         CLI watcher
-                   (future: licensed dashboard)
+                    CLI watcher / Local React dashboard
 
 C++20 Matching Engine (separate: simulated orders and benchmark workloads)
 ```
